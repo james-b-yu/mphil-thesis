@@ -1,0 +1,8 @@
+# python==3.12
+
+pandas~=2.2
+numpy~=2.2
+strictyaml~=1.7
+torch~=2.7
+tensorly-torch~=0.5
+tensorly~=0.9
