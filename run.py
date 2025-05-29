@@ -3,6 +3,8 @@ from argparse import Namespace
 import logging
 from context import HilbertStochasticInterpolant
 from config import parse
+import numpy as np
+import torch
 
 
 def setup_logging(args: Namespace):
@@ -29,7 +31,12 @@ def main():
 
     if args.command == "train":
         context.train()
-        context.sample()
+    elif args.command == "sample":
+        state_dict = torch.load(args.pth)
+        res = context.sample(state_dict, args.n_samples,
+                             args.n_batch_size, args.all_t)
+        res = res.numpy()
+        np.savez_compressed(args.out_file, res)
 
 
 if __name__ == "__main__":
