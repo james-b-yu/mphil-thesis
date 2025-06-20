@@ -12,6 +12,7 @@ from model import FNO
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
 from time import time
+from wandb import init as wandb_init
 
 
 class HilbertStochasticInterpolant:
@@ -27,6 +28,7 @@ class HilbertStochasticInterpolant:
         self.sampler = Sampler(config)
 
     def train(self):
+        wandb_run = wandb_init()
         self.logger.info("training")
 
         train_dataset = get_dataset(
@@ -51,26 +53,26 @@ class HilbertStochasticInterpolant:
             data_start = time()
             data_time = 0
 
-            for i, (_, y) in enumerate(train_loader):
+            for i, (x0, x1) in enumerate(train_loader):
                 model.train()
 
                 step += 1
-                y = y.to(self.device).squeeze(-1)  # time series
+                x0 = x0.to(self.device, dtype=torch.float32).squeeze(-1)
+                x1 = x1.to(self.device, dtype=torch.float32).squeeze(-1)
+
                 data_time += time() - data_start
 
-                t = torch.rand(y.shape[0], device=self.device)
-                z = self.noise.sample(y.shape)
-                # TODO: start with other mu(0) distributions!
-                x0 = self.noise.sample(y.shape)
+                t = torch.rand(x1.shape[0], device=self.device)
+                z = self.noise.sample(x1.shape)
 
-                xt = self.interpolate(t, x0, y, z)
-                target_drift = self.interpolate.get_target_drift(t, x0, y, z)
+                xt = self.interpolate(t, x0, x1, z)
+                target_drift = self.interpolate.get_target_drift(t, x0, x1, z)
 
                 pred_drift = model(xt, t)
 
                 mse_loss = (target_drift -
                             # TODO: accommodate 2D etc
-                            pred_drift).square().sum(dim=1).mean(dim=0)
+                            pred_drift).square().sum(dim=(1, 2)).mean(dim=0)
 
                 optim.zero_grad()
                 mse_loss.backward()
@@ -80,8 +82,13 @@ class HilbertStochasticInterpolant:
                 optim.step()
 
                 self.logger.info(
-                    f"step: {step}, loss: {torch.abs(mse_loss).item()}, data time: {data_time / (i+1)}"
+                    f"step: {step}, epoch: {epoch} loss: {torch.abs(mse_loss).item()}, data time: {data_time / (i+1)}"
                 )
+                wandb_run.log({
+                    "step": step,
+                    "loss": mse_loss,
+                    "epoch": epoch
+                })
 
                 if self.args.save_every is not None and epoch % self.args.save_every == 0 and epoch > 1:
                     os.makedirs(self.args.save_dir, exist_ok=True)
@@ -105,13 +112,26 @@ class HilbertStochasticInterpolant:
                           if all_t else (n_samples, self.dimension))
 
         start_cur = 0
+        dataset = get_dataset(
+            self.config["data"]["dataset"], phase="train")
+        dataloader = DataLoader(dataset, batch_size=n_batch_size)
+
+        for i, (_, x1) in enumerate(dataloader):
+            x1 = x1.to(self.device).squeeze(-1)  # time series
+            x0 = self.noise.sample(x1.shape)
+            z = self.noise.sample(x1.shape)
+            break
+
         while start_cur < n_samples:
+
             n_batch_size = min(n_batch_size, n_samples - start_cur)
 
             # TODO: allow for aribtrary start and end
-            x = self.noise.sample(size=(n_batch_size, self.dimension))
+            x = x0
 
             x = self.sampler(x, model, self.noise, times, all_t)
+            # x = self.sampler.sample_known(
+            #     x, x0, x1, self.interpolate, self.noise, times)
 
             if all_t:
                 res[:, start_cur:start_cur + n_batch_size] = x

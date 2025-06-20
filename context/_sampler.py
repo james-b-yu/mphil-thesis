@@ -18,6 +18,32 @@ class Sampler:
         return self._sample(*args, **kwargs)
 
     @torch.no_grad()
+    def sample_known(self, x: torch.Tensor, x0: torch.Tensor, x1: torch.Tensor, interp: Interpolate, noise: Noise, times: torch.Tensor):
+        assert times.dim() == 1 and len(times) > 1
+        dt = 0
+
+        for i, t in enumerate(tqdm(times)):
+            if i + 1 < len(times):
+                dt = (times[i + 1] - times[i]).item()  # allow for dynamic dt
+
+            t = t.item()
+
+            t_input = torch.full((x.shape[0], ), fill_value=t, device=x.device)
+
+            z = noise.sample(x.shape)
+            drift = interp.get_target_drift(t_input, x0, x1, z)
+
+            diffusion = z * \
+                math.sqrt(2.0 * self.config["interpolate"]["eps"] * dt)
+
+            x = x + drift * dt + diffusion
+
+            # indices = x.norm(dim=1) > 10
+            # x[indices] = x[indices] / x[indices].norm(dim=1)[:, None] * 17
+
+        return x
+
+    @torch.no_grad()
     def _sample(self, start: torch.Tensor, model: nn.Module, noise: Noise, times: torch.Tensor, all_t: bool):
         """Euler-Maruyama sampling
 

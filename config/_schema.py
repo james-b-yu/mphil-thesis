@@ -3,7 +3,7 @@ from strictyaml import Map, Enum, Int, Seq, Bool, Float, Str
 
 
 class Data(TypedDict):
-    dataset: Literal["gridwatch"]
+    dataset: Literal["gridwatch", "darcy_1d"]
 
 
 class Training(TypedDict):
@@ -63,7 +63,7 @@ class Config(TypedDict):
 config_schema = Map({
     "device": Str(),
     "data": Map({
-        "dataset": Enum(["gridwatch"]),
+        "dataset": Enum(["gridwatch", "darcy_1d"]),
     }),
     "dimension": Int(),
     "interpolate": Map({
