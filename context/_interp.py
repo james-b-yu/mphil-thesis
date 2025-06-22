@@ -24,7 +24,7 @@ class Interpolate:
         gamma = (t * (1.0 - t)) ** 0.5
         return (1.0 - t) * x0 + (t) * x1 + gamma * z
 
-    def get_target_drift(self, t: torch.Tensor, x0: torch.Tensor, x1: torch.Tensor, z: torch.Tensor):
+    def get_target_forward_drift(self, t: torch.Tensor, x0: torch.Tensor, x1: torch.Tensor, z: torch.Tensor):
         """given a random sample from start and end distsm and time, calculate drift
         """
 
@@ -43,6 +43,26 @@ class Interpolate:
         gamma_inv = (t * (1.0 - t)) ** (-0.5)
 
         velocity = x1 - x0 + 0.5 * (1.0 - 2.0 * t) * gamma_inv * z
-        score = 0.0 - self.eps * gamma_inv * z
+        score = - self.eps * gamma_inv * z
+
+        return velocity + score
+
+    def get_target_backward_drift(self, t: torch.Tensor, x0: torch.Tensor, x1: torch.Tensor, z: torch.Tensor):
+        assert t.dim() == 1
+        assert x0.shape == x1.shape
+        assert z.shape == x1.shape
+        assert t.shape[0] == x0.shape[0]
+
+        for _ in range(x0.dim() - t.dim()):
+            t = t.unsqueeze(-1)
+
+        # TODO: support other interpolants
+        # for now, we define
+        # I(t, x0, x1) = (1-t) x0 + (t) x1
+        # gamma(t) = sqrt(t(1-t))
+        gamma_inv = (t * (1.0 - t)) ** (-0.5)
+
+        velocity = -(x1 - x0 + 0.5 * (1.0 - 2.0 * t) * gamma_inv * z)
+        score =  -self.eps * gamma_inv * z
 
         return velocity + score

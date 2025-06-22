@@ -13,7 +13,7 @@ fno:
   separable: True
   skip_type: soft-gating
   n_modes:
-    - 64
+    - 16
   norm_type: group
   factorisation_rank: 1
   factorisation_type: ComplexDense
@@ -32,5 +32,5 @@ training:
   lr: 1e-4
 sampling:
   n_t_steps: 1000
-  start_t: 0.001
-  end_t: 0.999
+  start_t: 0.0
+  end_t: 1

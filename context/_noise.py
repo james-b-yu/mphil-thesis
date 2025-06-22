@@ -1,7 +1,10 @@
+# XXX: compare this file
+
 import torch
 
 from ._kernels import kernel_SE
 from config._schema import Config
+import numpy as np
 
 
 class Noise:
@@ -10,18 +13,16 @@ class Noise:
         self.device = config["device"]
         self.n_mesh = config["dimension"]
         # TODO: allow 2D noise
-        x = torch.linspace(0, 1, self.n_mesh, device=self.device)
+        x = np.linspace(0, 1, self.n_mesh)
 
         # gram matrix K
-        K = kernel_SE(x, x, config["noise"]
-                      ["gain"], config["noise"]["len"])
+        K = config["noise"]["gain"] * np.exp(-0.5 *
+                                             (x[:, np.newaxis] - x[np.newaxis, :])**2 / config["noise"]["len"]**2)
 
-        L, _ = torch.linalg.cholesky_ex(
-            K + 1e-5 * torch.eye(self.n_mesh, device=K.device))
+        K_chol = np.linalg.cholesky(K + np.eye(x.shape[0]) * 1e-8)
 
-        assert torch.is_tensor(L)
-
-        self.L = L
+        self.L = torch.from_numpy(K_chol).to(
+            device=config["device"], dtype=torch.float32)
 
     def sample(self, size):
         assert size[-1] == self.n_mesh

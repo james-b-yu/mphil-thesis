@@ -31,7 +31,8 @@ class Sampler:
             t_input = torch.full((x.shape[0], ), fill_value=t, device=x.device)
 
             z = noise.sample(x.shape)
-            drift = interp.get_target_drift(t_input, x0, x1, z)
+            z[:, 1] *= 0.1
+            drift = interp.get_target_forward_drift(t_input, x0, x1, z)
 
             diffusion = z * \
                 math.sqrt(2.0 * self.config["interpolate"]["eps"] * dt)
@@ -44,7 +45,7 @@ class Sampler:
         return x
 
     @torch.no_grad()
-    def _sample(self, start: torch.Tensor, model: nn.Module, noise: Noise, times: torch.Tensor, all_t: bool):
+    def _sample(self, start: torch.Tensor, model: nn.Module, noise: Noise, times: torch.Tensor, all_t: bool, backward: bool = False):
         """Euler-Maruyama sampling
 
         Args:
@@ -70,7 +71,9 @@ class Sampler:
             t_input = torch.full((x.shape[0], ), fill_value=t, device=x.device)
 
             z = noise.sample(x.shape)
-            drift = model(x, t_input)
+            z[:, 1] *= 0.1
+            drift = model(x, t_input) if not backward else model(
+                x, 1.0 - t_input)
 
             diffusion = z * \
                 math.sqrt(2.0 * self.config["interpolate"]["eps"] * dt)

@@ -1,3 +1,5 @@
+# XXX: compare this file
+
 # dataset generation taken from https://github.com/tyler-ingebrand/OperatorFunctionEncoder/blob/main/src/Datasets/DarcyDataset.py
 
 from concurrent.futures import ProcessPoolExecutor
@@ -20,19 +22,21 @@ from numpy.random import default_rng, Generator
 
 def _K_chol(x, l: float, sigma: float):
     x = np.array(x)
-    K = np.exp(-0.5 * sigma *
-               (x[:, np.newaxis] - x[np.newaxis, :])**2 / l**2)
-    K_chol = np.linalg.cholesky(K + np.eye(x.shape[0]) * 1e-5)
+    K = sigma * np.exp(-0.5 *
+                       (x[:, np.newaxis] - x[np.newaxis, :])**2 / l**2)
+    K_chol = np.linalg.cholesky(K + np.eye(x.shape[0]) * 1e-8)
     return K_chol
 
 
 # sample a Gaussian process
-L = 0.04
-SIGMA = 1.0
+L_PERM = 0.04
+L_SOLN = 0.25
+SIGMA_PERM = 1.0
+SIGMA_SOLN = 0.01
 
 
 def source_function(x, rng: Generator):
-    K_chol = _K_chol(tuple(x), L, SIGMA)
+    K_chol = _K_chol(tuple(x), L_PERM, SIGMA_PERM)
     ys = K_chol @ rng.standard_normal(size=x.shape[0])
 
     # ys = multivariate_normal.rvs(mean=np.zeros_like(x), cov=K)
@@ -165,20 +169,23 @@ class Darcy1dDataset(torch.utils.data.Dataset):
         self.rng = default_rng()
         self.resolution: int = raw["x"].shape[-1]
 
+        x = self.sensor_locs[0]  # XXX: allow for variable sensor locs
+        self.K_chol_perm = _K_chol(x, L_PERM, SIGMA_PERM)
+        self.K_chol_soln = _K_chol(x, L_SOLN, SIGMA_SOLN)
+
     @torch.no_grad()
     def __getitem__(self, idx):
-        x = self.sensor_locs[idx]
-        K_chol = _K_chol(x, L, SIGMA)
-        perm_prior = 0.2 + \
-            (K_chol @ self.rng.standard_normal(size=self.resolution)) ** 2
-        soln_prior = 0.1 * \
-            K_chol @ self.rng.standard_normal(size=self.resolution)
-
-        perm_prior = torch.from_numpy(perm_prior)
-        soln_prior = torch.from_numpy(soln_prior)
+        # XXX: fix this bit in the final code
+        # perm_prior = (
+        #     self.K_chol_perm @ self.rng.standard_normal(size=self.resolution))
+        # soln_prior = self.K_chol_soln @ self.rng.standard_normal(
+        #     size=self.resolution)
 
         perm = self.permeability[idx]
-        soln = self.solutions[idx]
+        soln = 12.0 * self.solutions[idx]
+
+        perm_prior = torch.zeros_like(perm)
+        soln_prior = torch.zeros_like(soln)
 
         x0 = torch.stack((perm, soln_prior))
         x1 = torch.stack((perm_prior, soln))

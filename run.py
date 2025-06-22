@@ -31,6 +31,21 @@ def main():
 
     if args.command == "train":
         context.train()
+    elif args.command == "test":
+        state_dict = torch.load(args.pth)
+        res_forward, mse_forward = context.test(
+            state_dict, args.max_n_samples, args.n_batch_size, args.all_t)
+        res_forward = res_forward.numpy()
+        np.savez_compressed(args.out_file, forward=res_forward)
+
+        print(f"MSE forward: {mse_forward:.2e}")
+    elif args.command == "test_one":
+        state_dict = torch.load(args.pth)
+        res_forward, res_backward = context.test_one(
+            state_dict, args.n_id, args.n_repeats, args.all_t)
+        np.savez_compressed(
+            args.out_file, forward=res_forward.numpy(force=True), backward=res_backward.numpy(force=True))
+
     elif args.command == "sample":
         state_dict = torch.load(args.pth)
         res = context.sample(state_dict, args.n_samples,

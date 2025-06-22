@@ -66,7 +66,7 @@ class HilbertStochasticInterpolant:
                 x0 = self.noise.sample(y.shape)
 
                 xt = self.interpolate(t, x0, y, z)
-                target_drift = self.interpolate.get_target_drift(t, x0, y, z)
+                target_drift = self.interpolate.get_target_forward_drift(t, x0, y, z)
 
                 pred_drift = model(xt, t)
 

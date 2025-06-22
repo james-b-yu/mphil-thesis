@@ -3,7 +3,7 @@ from .gridwatch import GridwatchDataset
 from ._darcy_1d import Darcy1dDataset
 
 
-def get_dataset(dataset_name: Literal["gridwatch"], *args, **kwargs):
+def get_dataset(dataset_name: Literal["gridwatch", "darcy_1d"], *args, **kwargs):
     if dataset_name == "gridwatch":
         return GridwatchDataset(*args, **kwargs)
     elif dataset_name == "darcy_1d":
