@@ -173,6 +173,11 @@ class Darcy1dDataset(torch.utils.data.Dataset):
         self.K_chol_perm = _K_chol(x, L_PERM, SIGMA_PERM)
         self.K_chol_soln = _K_chol(x, L_SOLN, SIGMA_SOLN)
 
+        self.means = torch.as_tensor(
+            [self.permeability.mean(), self.solutions.mean()], dtype=torch.float32)
+        self.stds = torch.as_tensor(
+            [self.permeability.std(), self.solutions.std()], dtype=torch.float32)
+
     @torch.no_grad()
     def __getitem__(self, idx):
         # XXX: fix this bit in the final code
@@ -183,6 +188,9 @@ class Darcy1dDataset(torch.utils.data.Dataset):
 
         perm = self.permeability[idx]
         soln = 12.0 * self.solutions[idx]
+
+        perm = (perm - self.means[0]) / self.stds[0]
+        soln = (soln - self.means[1]) / self.stds[1]
 
         perm_prior = torch.zeros_like(perm)
         soln_prior = torch.zeros_like(soln)

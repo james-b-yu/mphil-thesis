@@ -70,6 +70,7 @@ class HilbertStochasticInterpolant:
 
                 t = torch.rand(x1.shape[0], device=self.device)
                 z = self.noise.sample(x1.shape)
+                z[:, 1] *= 0.1
 
                 xt = self.interpolate(t, x0, x1, z)
                 target_forward = self.interpolate.get_target_forward_drift(
