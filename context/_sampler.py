@@ -31,7 +31,7 @@ class Sampler:
             t_input = torch.full((x.shape[0], ), fill_value=t, device=x.device)
 
             z = noise.sample(x.shape)
-            z[:, 1] *= 0.1
+
             drift = interp.get_target_forward_drift(t_input, x0, x1, z)
 
             diffusion = z * \
@@ -71,7 +71,7 @@ class Sampler:
             t_input = torch.full((x.shape[0], ), fill_value=t, device=x.device)
 
             z = noise.sample(x.shape)
-            z[:, 1] *= 0.1
+
             drift = model(x, t_input) if not backward else model(
                 x, 1.0 - t_input)
 
