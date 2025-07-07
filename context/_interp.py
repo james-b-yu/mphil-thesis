@@ -43,16 +43,6 @@ class Interpolate:
         res = res.clamp(-1e3, +1e3)
         
         return res
-    
-    def get_training_avr_weight_on_Ez(self, t: torch.Tensor, x0: torch.Tensor, x1: torch.Tensor, z: torch.Tensor):
-        gamma_inv = (t * (1.0 - t)) ** (-0.5)
-        
-        forward_weight = (0.5 * ((self.b) ** 0.5) * (1.0 - 2.0 * t) * gamma_inv - self.eps * gamma_inv) ** 2
-        backward_weight = (0.5 * ((self.b) ** 0.5) * (1.0 - 2.0 * t) * gamma_inv + self.eps * gamma_inv) ** 2
-        
-        weight = 0.5 * forward_weight + 0.5 * backward_weight
-        return weight / (weight.sum() / weight.numel())
-        
 
     def get_target_forward_drift(self, t: torch.Tensor, x0: torch.Tensor, x1: torch.Tensor, z: torch.Tensor):
         """given a random sample from start and end distsm and time, calculate drift

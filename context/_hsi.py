@@ -105,16 +105,9 @@ class HilbertStochasticInterpolant:
                 mse_0 = (target_0 -
                                # TODO: accommodate 2D etc
                                pred_0).square().sum(dim=(1, 2)).mean(dim=0)
-                if self.mode == "direct":
-                    mse_1 = (target_1 -
+                mse_1 = (target_1 -
                                 # TODO: accommodate 2D etc
                                 pred_1).square().sum(dim=(1, 2)).mean(dim=0)
-                elif self.mode == "separate":
-                    mse_1 = (((target_1 -
-                                # TODO: accommodate 2D etc
-                                pred_1).square().sum(dim=(1, 2))) * self.interpolate.get_training_avr_weight_on_Ez(t, x0, x1, z)).mean(dim=0)
-                else:
-                    raise ValueError()
 
                 if torch.isnan(mse_0) or torch.isnan(mse_1):
                     self.logger.warning("encountered NAN loss. skipping")
