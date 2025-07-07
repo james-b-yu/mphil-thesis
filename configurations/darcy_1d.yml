@@ -21,7 +21,7 @@ fno:
   mlp_dropout: 0.1
   mlp_expansion: 4
 interpolate:
-  eps: 0.005
+  b: 0.005
 noise:
   gain: 1.0
   len: 1.0

@@ -5,7 +5,8 @@ from config import Config
 class Interpolate:
     def __init__(self, config: Config):
         self.config = config
-        self.eps = config["interpolate"]["eps"]
+        self.b = config["interpolate"]["b"]
+        self.eps = self.b / 2.0
         # TODO: enable other schedules
 
     def __call__(self, *args, **kwargs):
@@ -21,7 +22,7 @@ class Interpolate:
 
         for _ in range(x0.dim() - t.dim()):
             t = t.unsqueeze(-1)
-        gamma = 0.1 * (t * (1.0 - t)) ** 0.5
+        gamma = (self.b * t * (1.0 - t)) ** 0.5
         return (1.0 - t) * x0 + (t) * x1 + gamma * z
 
     def get_target_forward_drift(self, t: torch.Tensor, x0: torch.Tensor, x1: torch.Tensor, z: torch.Tensor):
@@ -42,7 +43,7 @@ class Interpolate:
         # gamma(t) = sqrt(t(1-t))
         gamma_inv = (t * (1.0 - t)) ** (-0.5)
 
-        velocity = x1 - x0 + 0.1 * 0.5 * (1.0 - 2.0 * t) * gamma_inv * z
+        velocity = x1 - x0 + 0.5 * ((self.b) ** 0.5) * (1.0 - 2.0 * t) * gamma_inv * z
         score = - self.eps * gamma_inv * z
 
         return velocity + score
@@ -62,7 +63,7 @@ class Interpolate:
         # gamma(t) = sqrt(t(1-t))
         gamma_inv = (t * (1.0 - t)) ** (-0.5)
 
-        velocity = -(x1 - x0 + 0.1 * 0.5 * (1.0 - 2.0 * t) * gamma_inv * z)
+        velocity = -(x1 - x0 + 0.5 * ((self.b) ** 0.5) * (1.0 - 2.0 * t) * gamma_inv * z)
         score = -self.eps * gamma_inv * z
 
         return velocity + score

@@ -207,8 +207,8 @@ class HilbertStochasticInterpolant:
             x1 = x1.to(device=self.device, dtype=torch.float32)
 
             X_forward = self.sampler(
-                x0, model_forward, self.noise, times, all_t)
-            X_backward = self.sampler(x1, model_backward, self.noise, times, all_t, backward=True)
+                x0, model_forward, self.noise, self.interpolate, times, all_t)
+            X_backward = self.sampler(x1, model_backward, self.noise, self.interpolate, times, all_t, backward=True)
 
             if all_t:
                 res_forward[:, start_cur:end_cur] = X_forward[:, :, 1]

@@ -26,7 +26,7 @@ class Noise(TypedDict):
 
 
 class Interpolate(TypedDict):
-    eps: float
+    b: float
     # TODO: ADD OTHER SCHEDULES
 
 
@@ -68,7 +68,7 @@ config_schema = Map({
     }),
     "dimension": Int(),
     "interpolate": Map({
-        "eps": Float(),
+        "b": Float(),
     }),
     "training": Map({
         "n_batch": Int(),
