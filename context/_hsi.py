@@ -12,6 +12,7 @@ from datasets import get_dataset
 from model import FNO
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
+from torch.optim.lr_scheduler import LambdaLR
 from time import time
 from wandb import init as wandb_init
 
@@ -48,11 +49,23 @@ class HilbertStochasticInterpolant:
         model_forward = model_forward.to(device=self.device)
         model_backward = model_backward.to(device=self.device)
 
+        n_warmup_steps = self.config["training"]["n_warmup_steps"]
+        max_lr = self.config["training"]["lr"]
+
         optim_forward = AdamW(model_forward.parameters(), amsgrad=True,
-                              lr=self.config["training"]["lr"])
+                              lr=max_lr)
         optim_backward = AdamW(model_backward.parameters(), amsgrad=True,
-                               lr=self.config["training"]["lr"])
+                               lr=max_lr)
         step = 0
+        
+        def warmup_fn(step: int):
+            if step >= n_warmup_steps:
+                return 1.0
+            else:
+                return (step / n_warmup_steps)
+            
+        scheduler_forward = LambdaLR(optim_forward, warmup_fn)
+        scheduler_backward = LambdaLR(optim_backward, warmup_fn)
 
         for epoch in range(self.args.start_epoch, self.config["training"]
                            ["n_epochs"] + 1):
@@ -91,6 +104,8 @@ class HilbertStochasticInterpolant:
                     self.logger.warning("encountered NAN loss. skipping")
                     continue
 
+                # optim 
+
                 optim_forward.zero_grad()
                 optim_backward.zero_grad()
 
@@ -107,12 +122,15 @@ class HilbertStochasticInterpolant:
                 )
                 optim_forward.step()
                 optim_backward.step()
+                scheduler_forward.step()
+                scheduler_backward.step()
 
                 self.logger.info(
-                    f"step: {step}, epoch: {epoch} forward: {torch.abs(mse_forward).item():.2f} backward: {torch.abs(mse_backward).item():.2f}, data time: {data_time / (i+1)}"
+                    f"step: {step}, lr: {scheduler_forward.get_last_lr()[0]:.2e} epoch: {epoch} forward: {torch.abs(mse_forward).item():.2f} backward: {torch.abs(mse_backward).item():.2f}, data time: {data_time / (i+1)}"
                 )
                 wandb_run.log({
                     "step": step,
+                    "lr": scheduler_forward.get_last_lr()[0],
                     "forward_loss": mse_forward,
                     "backward_loss": mse_backward,
                     "forward_gradnorm": norm_forward,

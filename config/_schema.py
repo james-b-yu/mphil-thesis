@@ -11,6 +11,7 @@ class Training(TypedDict):
     n_epochs: int
     grad_clip: float
     lr: float
+    n_warmup_steps: int
 
 
 class Sampling(TypedDict):
@@ -74,6 +75,7 @@ config_schema = Map({
         "n_epochs": Int(),
         "grad_clip": Float(),
         "lr": Float(),
+        "n_warmup_steps": Int(),
     }),
     "sampling": Map({
         "n_t_steps": Int(),
