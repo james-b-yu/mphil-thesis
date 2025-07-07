@@ -19,37 +19,15 @@ class Sampler:
             return np.exp(-( (1.0 - t) ** (-0.5) ))
         
         # set up time change
-        theta_unscaled = solve_ivp(fun=w, t_span=(0, 1), y0=np.array([0], dtype=np.float32), dense=True)
+        theta_unscaled = solve_ivp(fun=w, t_span=(0, 1), y0=np.array([0], dtype=np.float32), dense_output=True)
         
-        self.w = w
+        self.theta_t = lambda t: w(t) / theta_unscaled.sol(1.0)
         self.theta = lambda t: theta_unscaled.sol(t) / theta_unscaled.sol(1.0)
 
     @torch.no_grad()
     def sample_known(self, x: torch.Tensor, x0: torch.Tensor, x1: torch.Tensor, interp: Interpolate, noise: Noise, times: torch.Tensor):
         assert times.dim() == 1 and len(times) > 1
-        dt = 0
-
-        for i, t in enumerate(tqdm(times, leave=False)):
-            if i + 1 < len(times):
-                dt = (times[i + 1] - times[i]).item()  # allow for dynamic dt
-
-            t = t.item()
-
-            t_input = torch.full((x.shape[0], ), fill_value=t, device=x.device)
-
-            z = noise.sample(x.shape)
-
-            drift = interp.get_target_forward_drift(t_input, x0, x1, z)
-
-            diffusion = z * \
-                math.sqrt(2.0 * interp.eps * dt)
-
-            x = x + drift * dt + diffusion
-
-            # indices = x.norm(dim=1) > 10
-            # x[indices] = x[indices] / x[indices].norm(dim=1)[:, None] * 17
-
-        return x
+        raise NotImplementedError()
 
     @torch.no_grad()
     def sample_direct(self, start: torch.Tensor, model: nn.Module, noise: Noise, interp: Interpolate, times: torch.Tensor, all_t: bool, backward: bool = False):
@@ -64,7 +42,7 @@ class Sampler:
 
         x = start
 
-        dt = 0
+        dt = 0  # XXX: FIXME!!! THIS IS WRONG
 
         if all_t:
             res = torch.zeros(size=(len(times), *x.shape), device=x.device)
@@ -85,9 +63,9 @@ class Sampler:
                 x, 1.0 - t_input)
 
             diffusion = z * \
-                math.sqrt(2.0 * interp.eps * dt * self.w(t))
+                math.sqrt(2.0 * interp.eps * dt * self.theta_t(t))
 
-            x = x + drift * dt * self.w(t) + diffusion
+            x = x + drift * dt * self.theta_t(t) + diffusion
 
             # indices = x.norm(dim=1) > 10
             # x[indices] = x[indices] / x[indices].norm(dim=1)[:, None] * 17
@@ -110,32 +88,29 @@ class Sampler:
 
         x = start
 
-        dt = 0
+        dtheta = 0
 
         if all_t:
             res = torch.zeros(size=(len(times), *x.shape), device=x.device)
 
-        for i, t in enumerate(tqdm(times, leave=False)):
-            if i + 1 < len(times):
-                dt = (times[i + 1] - times[i]).item()  # allow for dynamic dt
-
-            t = t.item()
-
-            t_input = torch.full((x.shape[0], ), fill_value=t, device=x.device)
-
-            t_input = self.theta(t_input)
+        for i, s in enumerate(tqdm(times, leave=False)):
+            theta = self.theta(s.item()).item()
+            theta_input = torch.full((x.shape[0], ), fill_value=theta, device=x.device)
 
             z = noise.sample(x.shape)
+            
+            if i + 1 < len(times):
+                dtheta = (times[i + 1] - times[i]).item() * self.theta_t(s).item()  # allow for dynamic dt
 
             if not backward:
-                drift = model_EIt(x, t_input) + interp.get_weight_on_Ez(t_input, False)[:, None, None] * model_Ez(x, t_input)
+                drift = model_EIt(x, theta_input) + interp.get_weight_on_Ez(theta_input, False)[:, None, None] * model_Ez(x, theta_input)
             else:
-                drift = model_EIt(x, 1.0 - t_input) + interp.get_weight_on_Ez(1.0 - t_input, True)[:, None, None] * model_Ez(x, 1.0 - t_input)
+                drift = model_EIt(x, 1.0 - theta_input) + interp.get_weight_on_Ez(1.0 - theta_input, True)[:, None, None] * model_Ez(x, 1.0 - theta_input)
 
             diffusion = z * \
-                math.sqrt(2.0 * interp.eps * dt * self.w(t))
+                math.sqrt(2.0 * interp.eps * dtheta)
 
-            x = x + drift * dt * self.w(t) + diffusion
+            x = x + drift * dtheta + diffusion
 
             # indices = x.norm(dim=1) > 10
             # x[indices] = x[indices] / x[indices].norm(dim=1)[:, None] * 17

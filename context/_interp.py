@@ -35,11 +35,14 @@ class Interpolate:
         gamma_inv = (t * (1.0 - t)) ** (-0.5)
         
         if not backward:
-            return 0.5 * ((self.b) ** 0.5) * (1.0 - 2.0 * t) * gamma_inv - self.eps * gamma_inv
+            res: torch.Tensor = 0.5 * ((self.b) ** 0.5) * (1.0 - 2.0 * t) * gamma_inv - self.eps * gamma_inv
         else:
             # XXX: must pass in 1-t
-            return -0.5 * ((self.b) ** 0.5) * (1.0 - 2.0 * t) * gamma_inv - self.eps * gamma_inv
+            res: torch.Tensor = -0.5 * ((self.b) ** 0.5) * (1.0 - 2.0 * t) * gamma_inv - self.eps * gamma_inv
+            
+        res = res.clamp(-1e3, +1e3)
         
+        return res
     
     def get_training_avr_weight_on_Ez(self, t: torch.Tensor, x0: torch.Tensor, x1: torch.Tensor, z: torch.Tensor):
         gamma_inv = (t * (1.0 - t)) ** (-0.5)
