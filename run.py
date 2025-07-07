@@ -34,7 +34,7 @@ def main():
     elif args.command == "test":
         state_dict = torch.load(args.pth)
         res_forward, res_backward, err_forward, err_backward = context.test(
-            state_dict, args.max_n_samples, args.n_batch_size, args.all_t)
+            state_dict, args.max_n_samples, args.n_batch_size, args.all_t, phase="test")
         res_forward = res_forward.numpy()
         res_backward = res_backward.numpy()
         print(f"Relative L2 Error. Forward: {err_forward:.2f}. Backward: {err_backward:.2f}")
@@ -49,11 +49,7 @@ def main():
             args.out_file, forward=res_forward.numpy(force=True), backward=res_backward.numpy(force=True))
 
     elif args.command == "sample":
-        state_dict = torch.load(args.pth)
-        res = context.sample(state_dict, args.n_samples,
-                             args.n_batch_size, args.all_t)
-        res = res.numpy()
-        np.savez_compressed(args.out_file, res)
+        raise NotImplementedError()
 
 
 if __name__ == "__main__":
