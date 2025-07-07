@@ -1,5 +1,5 @@
 import os
-from typing import Any, Mapping
+from typing import Any, Literal, Mapping
 import torch
 from tqdm import tqdm
 from ._noise import Noise
@@ -120,16 +120,30 @@ class HilbertStochasticInterpolant:
                     "epoch": epoch
                 })
 
-                if self.args.save_every is not None and epoch % self.args.save_every == 0 and epoch > 1:
-                    os.makedirs(self.args.save_dir, exist_ok=True)
-                    torch.save({
-                        "forward": model_forward.state_dict(),
-                        "backward": model_backward.state_dict(),
-                    }, f"{self.args.save_dir}/epoch_{epoch}.pth")
+            if self.args.save_every is not None and epoch % self.args.save_every == 0 and epoch > 1:
+                self.logger.info(f"Evaluating...")
+                
+                state_dict = {
+                    "forward": model_forward.state_dict(),
+                    "backward": model_backward.state_dict(),
+                }
+                
+                _, _, err_forward, err_backward = self.test(state_dict, max_n_samples=None, n_batch_size=self.config["training"]["n_batch"], all_t=False, phase="valid")
+                
+                wandb_run.log({
+                    "step": step,
+                    "forward_valid_rel_l2_err": err_forward,
+                    "backward_valid_rel_l2_err": err_backward,
+                    "epoch": epoch
+                })
+                
+                self.logger.info(f"Saving to `{self.args.save_dir}`...")
+                os.makedirs(self.args.save_dir, exist_ok=True)
+                torch.save(state_dict, f"{self.args.save_dir}/epoch_{epoch}.pth")
 
-                data_start = time()
+            data_start = time()
 
-    def test(self, state_dict: Mapping[str, Any], max_n_samples: int, n_batch_size: int, all_t: bool):
+    def test(self, state_dict: Mapping[str, Any], max_n_samples: int | None, n_batch_size: int, all_t: bool, phase: Literal["valid", "test"]):
         self.logger.info("testing")
 
         model_forward = FNO(self.config)
