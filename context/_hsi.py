@@ -136,6 +136,11 @@ class HilbertStochasticInterpolant:
         model_forward.load_state_dict(state_dict["forward"])
         model_forward = model_forward.to(device=self.device)
         model_forward.eval()
+        
+        model_backward = FNO(self.config)
+        model_backward.load_state_dict(state_dict["backward"])
+        model_backward = model_backward.to(device=self.device)
+        model_backward.eval()
 
         times = torch.linspace(
             self.config["sampling"]["start_t"], self.config["sampling"]["end_t"], self.config["sampling"]["n_t_steps"])
@@ -149,9 +154,11 @@ class HilbertStochasticInterpolant:
 
         res_forward = torch.zeros(size=(len(times), n_samples, self.dimension)
                                   if all_t else (n_samples, self.dimension))
+        res_backward = torch.zeros(size=(len(times), n_samples, self.dimension) if all_t else (n_samples, self.dimension))
 
         start_cur = 0
-        mses_forward = []
+        l2_errs_forward = torch.zeros(size=(n_samples, ), dtype=torch.float32, device=self.device)
+        l2_errs_backward = torch.zeros(size=(n_samples, ), dtype=torch.float32, device=self.device)
 
         for i, (x0, x1) in enumerate(tqdm(test_loader)):
             if start_cur >= n_samples:
@@ -169,25 +176,30 @@ class HilbertStochasticInterpolant:
 
             X_forward = self.sampler(
                 x0, model_forward, self.noise, times, all_t)
+            X_backward = self.sampler(x1, model_backward, self.noise, times, all_t, backward=True)
 
             if all_t:
                 res_forward[:, start_cur:end_cur] = X_forward[:, :, 1]
+                res_backward[:, start_cur:end_cur] = X_backward[:, :, 0]
             else:
                 res_forward[start_cur:end_cur] = X_forward[:, 1]
+                res_backward[start_cur:end_cur] = X_backward[:, 0]
 
-            start_cur = end_cur
 
             # now perform evaluation
             if all_t:
                 X_forward = X_forward[-1]
-                # X_backward = X_backward[-1]
+                X_backward = X_backward[-1]
 
-            mses_forward.append(((X_forward[:, 1] - x1[:, 1]) **
-                                 2).sum(dim=1).mean(dim=0))
+            l2_errs_forward[start_cur:end_cur] = (X_forward[:, 1] - x1[:, 1]).square().sum(dim=1) / x1[:, 1].square().sum(dim=1)
+            l2_errs_backward[start_cur:end_cur] = (X_backward[:, 0] - x0[:, 0]).square().sum(dim=1) / x0[:, 0].square().sum(dim=1)
+            
+            start_cur = end_cur
 
-        mse_forward = torch.as_tensor(mses_forward).mean().item()
+        l2_err_forward = float(l2_errs_forward.mean())
+        l2_err_backward = float(l2_errs_backward.mean())
 
-        return res_forward, mse_forward
+        return res_forward, res_backward, l2_err_forward, l2_err_backward
 
     def test_one(self, state_dict, n_id, n_repeats, all_t):
         self.logger.info("testing one")

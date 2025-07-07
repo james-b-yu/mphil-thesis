@@ -22,7 +22,7 @@ class Sampler:
         assert times.dim() == 1 and len(times) > 1
         dt = 0
 
-        for i, t in enumerate(tqdm(times)):
+        for i, t in enumerate(tqdm(times, leave=False)):
             if i + 1 < len(times):
                 dt = (times[i + 1] - times[i]).item()  # allow for dynamic dt
 
@@ -62,7 +62,7 @@ class Sampler:
         if all_t:
             res = torch.zeros(size=(len(times), *x.shape), device=x.device)
 
-        for i, t in enumerate(tqdm(times)):
+        for i, t in enumerate(tqdm(times, leave=False)):
             if i + 1 < len(times):
                 dt = (times[i + 1] - times[i]).item()  # allow for dynamic dt
 
