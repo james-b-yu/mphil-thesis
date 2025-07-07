@@ -25,6 +25,32 @@ class Interpolate:
         gamma = (self.b * t * (1.0 - t)) ** 0.5
         return (1.0 - t) * x0 + (t) * x1 + gamma * z
 
+    def get_target_EIt(self, t: torch.Tensor, x0: torch.Tensor, x1: torch.Tensor, z: torch.Tensor):
+        return x1 - x0
+
+    def get_target_Ez(self, t: torch.Tensor, x0: torch.Tensor, x1: torch.Tensor, z: torch.Tensor):
+        return z
+    
+    def get_weight_on_Ez(self, t: torch.Tensor, backward: bool):
+        gamma_inv = (t * (1.0 - t)) ** (-0.5)
+        
+        if not backward:
+            return 0.5 * ((self.b) ** 0.5) * (1.0 - 2.0 * t) * gamma_inv - self.eps * gamma_inv
+        else:
+            # XXX: must pass in 1-t
+            return -0.5 * ((self.b) ** 0.5) * (1.0 - 2.0 * t) * gamma_inv - self.eps * gamma_inv
+        
+    
+    def get_training_avr_weight_on_Ez(self, t: torch.Tensor, x0: torch.Tensor, x1: torch.Tensor, z: torch.Tensor):
+        gamma_inv = (t * (1.0 - t)) ** (-0.5)
+        
+        forward_weight = (0.5 * ((self.b) ** 0.5) * (1.0 - 2.0 * t) * gamma_inv - self.eps * gamma_inv) ** 2
+        backward_weight = (0.5 * ((self.b) ** 0.5) * (1.0 - 2.0 * t) * gamma_inv + self.eps * gamma_inv) ** 2
+        
+        weight = 0.5 * forward_weight + 0.5 * backward_weight
+        return weight / (weight.sum() / weight.numel())
+        
+
     def get_target_forward_drift(self, t: torch.Tensor, x0: torch.Tensor, x1: torch.Tensor, z: torch.Tensor):
         """given a random sample from start and end distsm and time, calculate drift
         """

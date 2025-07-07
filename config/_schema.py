@@ -12,6 +12,9 @@ class Training(TypedDict):
     grad_clip: float
     lr: float
     n_warmup_steps: int
+    
+class Model(TypedDict):
+    mode: Literal["direct", "separate"]
 
 
 class Sampling(TypedDict):
@@ -53,6 +56,7 @@ class FNO(TypedDict):
 class Config(TypedDict):
     device: str
     data: Data
+    model: Model
     dimension: int
     interpolate: Interpolate
     training: Training
@@ -65,6 +69,9 @@ config_schema = Map({
     "device": Str(),
     "data": Map({
         "dataset": Enum(["gridwatch", "darcy_1d"]),
+    }),
+    "model": Map({
+       "mode": Enum(["direct", "separate"]), 
     }),
     "dimension": Int(),
     "interpolate": Map({

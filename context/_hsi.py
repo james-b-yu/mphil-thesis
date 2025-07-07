@@ -28,6 +28,7 @@ class HilbertStochasticInterpolant:
         self.device = config["device"]
         self.dimension = config["dimension"]
         self.sampler = Sampler(config)
+        self.mode = config["model"]["mode"]
 
     def train(self):
         wandb_run = wandb_init()
@@ -38,24 +39,8 @@ class HilbertStochasticInterpolant:
         train_loader = DataLoader(
             train_dataset, batch_size=self.config["training"]["n_batch"], shuffle=True)
 
-        model_forward = FNO(self.config)
-        model_backward = FNO(self.config)
-
-        if self.args.resume is not None:
-            state_dict = torch.load(self.args.resume)
-            model_forward.load_state_dict(state_dict["forward"])
-            model_backward.load_state_dict(state_dict["backward"])
-
-        model_forward = model_forward.to(device=self.device)
-        model_backward = model_backward.to(device=self.device)
-
         n_warmup_steps = self.config["training"]["n_warmup_steps"]
         max_lr = self.config["training"]["lr"]
-
-        optim_forward = AdamW(model_forward.parameters(), amsgrad=True,
-                              lr=max_lr)
-        optim_backward = AdamW(model_backward.parameters(), amsgrad=True,
-                               lr=max_lr)
         step = 0
         
         def warmup_fn(step: int):
@@ -63,9 +48,25 @@ class HilbertStochasticInterpolant:
                 return 1.0
             else:
                 return (step / n_warmup_steps)
-            
-        scheduler_forward = LambdaLR(optim_forward, warmup_fn)
-        scheduler_backward = LambdaLR(optim_backward, warmup_fn)
+
+        model_0 = FNO(self.config)  # forward if direct, EIt if separate
+        model_1 = FNO(self.config)  # backward if direct, Ez if separate
+
+        if self.args.resume is not None:
+            state_dict = torch.load(self.args.resume)
+            model_0.load_state_dict(state_dict["forward" if self.mode == "direct" else "EIt"])
+            model_1.load_state_dict(state_dict["backward" if self.mode == "direct" else "Ez"])
+
+        model_0 = model_0.to(device=self.device)
+        model_1 = model_1.to(device=self.device)
+
+        optim_0 = AdamW(model_0.parameters(), amsgrad=True,
+                            lr=max_lr)
+        optim_1 = AdamW(model_1.parameters(), amsgrad=True,
+                            lr=max_lr)
+    
+        scheduler_0 = LambdaLR(optim_0, warmup_fn)
+        scheduler_1 = LambdaLR(optim_1, warmup_fn)
 
         for epoch in range(self.args.start_epoch, self.config["training"]
                            ["n_epochs"] + 1):
@@ -73,7 +74,8 @@ class HilbertStochasticInterpolant:
             data_time = 0
 
             for i, (x0, x1) in enumerate(train_loader):
-                model_forward.train()
+                model_0.train()
+                model_1.train()
 
                 step += 1
                 x0 = x0.to(self.device, dtype=torch.float32).squeeze(-1)
@@ -85,56 +87,70 @@ class HilbertStochasticInterpolant:
                 z = self.noise.sample(x1.shape)
 
                 xt = self.interpolate(t, x0, x1, z)
-                target_forward = self.interpolate.get_target_forward_drift(
-                    t, x0, x1, z)
-                target_backward = self.interpolate.get_target_backward_drift(
-                    t, x0, x1, z)
+                
+                if self.mode == "direct":
+                    target_0 = self.interpolate.get_target_forward_drift(
+                        t, x0, x1, z)
+                    target_1 = self.interpolate.get_target_backward_drift(
+                        t, x0, x1, z)
+                elif self.mode == "separate":
+                    target_0 = self.interpolate.get_target_EIt(t, x0, x1, z)
+                    target_1 = self.interpolate.get_target_Ez(t, x0, x1, z)
+                else:
+                    raise ValueError()
 
-                pred_forward = model_forward(xt, t)
-                pred_backward = model_backward(xt, t)
+                pred_0 = model_0(xt, t)
+                pred_1 = model_1(xt, t)
 
-                mse_forward = (target_forward -
+                mse_0 = (target_0 -
                                # TODO: accommodate 2D etc
-                               pred_forward).square().sum(dim=(1, 2)).mean(dim=0)
-                mse_backward = (target_backward -
+                               pred_0).square().sum(dim=(1, 2)).mean(dim=0)
+                if self.mode == "direct":
+                    mse_1 = (target_1 -
                                 # TODO: accommodate 2D etc
-                                pred_backward).square().sum(dim=(1, 2)).mean(dim=0)
+                                pred_1).square().sum(dim=(1, 2)).mean(dim=0)
+                elif self.mode == "separate":
+                    mse_1 = (((target_1 -
+                                # TODO: accommodate 2D etc
+                                pred_1).square().sum(dim=(1, 2))) * self.interpolate.get_training_avr_weight_on_Ez(t, x0, x1, z)).mean(dim=0)
+                else:
+                    raise ValueError()
 
-                if torch.isnan(mse_forward) or torch.isnan(mse_backward):
+                if torch.isnan(mse_0) or torch.isnan(mse_1):
                     self.logger.warning("encountered NAN loss. skipping")
                     continue
 
                 # optim 
 
-                optim_forward.zero_grad()
-                optim_backward.zero_grad()
+                optim_0.zero_grad()
+                optim_1.zero_grad()
 
-                mse_forward.backward()
-                mse_backward.backward()
+                mse_0.backward()
+                mse_1.backward()
 
-                norm_forward = torch.nn.utils.clip_grad_norm_(
-                    model_forward.parameters(
+                norm_0 = torch.nn.utils.clip_grad_norm_(
+                    model_0.parameters(
                     ), self.config["training"]["grad_clip"]
                 )
-                norm_backward = torch.nn.utils.clip_grad_norm_(
-                    model_backward.parameters(
+                norm_1 = torch.nn.utils.clip_grad_norm_(
+                    model_1.parameters(
                     ), self.config["training"]["grad_clip"]
                 )
-                optim_forward.step()
-                optim_backward.step()
-                scheduler_forward.step()
-                scheduler_backward.step()
+                optim_0.step()
+                optim_1.step()
+                scheduler_0.step()
+                scheduler_1.step()
 
                 self.logger.info(
-                    f"step: {step}, lr: {scheduler_forward.get_last_lr()[0]:.2e} epoch: {epoch} forward: {torch.abs(mse_forward).item():.2f} backward: {torch.abs(mse_backward).item():.2f}, data time: {data_time / (i+1)}"
+                    f"step: {step}, lr: {scheduler_0.get_last_lr()[0]:.2e} epoch: {epoch} forward: {torch.abs(mse_0).item():.2f} backward: {torch.abs(mse_1).item():.2f}, data time: {data_time / (i+1)}"
                 )
                 wandb_run.log({
                     "step": step,
-                    "lr": scheduler_forward.get_last_lr()[0],
-                    "forward_loss": mse_forward,
-                    "backward_loss": mse_backward,
-                    "forward_gradnorm": norm_forward,
-                    "backward_gradnorm": norm_backward,
+                    "lr": scheduler_0.get_last_lr()[0],
+                    "forward_loss" if self.mode == "direct" else "EIt_loss": mse_0,
+                    "backward_loss" if self.mode == "direct" else "Ez_loss": mse_1,
+                    "forward_gradnorm" if self.mode == "direct" else "EIt_gradnorm": norm_0,
+                    "backward_gradnorm" if self.mode == "direct" else "Ez_gradnorm": norm_1,
                     "epoch": epoch
                 })
 
@@ -142,11 +158,11 @@ class HilbertStochasticInterpolant:
                 self.logger.info(f"Evaluating...")
                 
                 state_dict = {
-                    "forward": model_forward.state_dict(),
-                    "backward": model_backward.state_dict(),
+                    "forward" if self.mode == "direct" else "EIt": model_0.state_dict(),
+                    "backward" if self.mode == "direct" else "Ez": model_1.state_dict(),
                 }
                 
-                _, _, err_forward, err_backward = self.test(state_dict, max_n_samples=None, n_batch_size=self.config["training"]["n_batch"], all_t=False, phase="valid")
+                _, _, err_forward, err_backward = self.test(state_dict, max_n_samples=None, n_batch_size=self.config["training"]["n_batch"], all_t=False, phase="valid")  # XXX: fix sampling!
                 
                 wandb_run.log({
                     "step": step,
@@ -164,15 +180,15 @@ class HilbertStochasticInterpolant:
     def test(self, state_dict: Mapping[str, Any], max_n_samples: int | None, n_batch_size: int, all_t: bool, phase: Literal["valid", "test"]):
         self.logger.info("testing")
 
-        model_forward = FNO(self.config)
-        model_forward.load_state_dict(state_dict["forward"])
-        model_forward = model_forward.to(device=self.device)
-        model_forward.eval()
+        model_0 = FNO(self.config)
+        model_0.load_state_dict(state_dict["forward" if self.mode == "direct" else "EIt"])
+        model_0 = model_0.to(device=self.device)
+        model_0.eval()
         
-        model_backward = FNO(self.config)
-        model_backward.load_state_dict(state_dict["backward"])
-        model_backward = model_backward.to(device=self.device)
-        model_backward.eval()
+        model_1 = FNO(self.config)
+        model_1.load_state_dict(state_dict["backward" if self.mode == "direct" else "Ez"])
+        model_1 = model_1.to(device=self.device)
+        model_1.eval()
 
         times = torch.linspace(
             self.config["sampling"]["start_t"], self.config["sampling"]["end_t"], self.config["sampling"]["n_t_steps"])
@@ -206,9 +222,15 @@ class HilbertStochasticInterpolant:
             x0 = x0.to(device=self.device, dtype=torch.float32)
             x1 = x1.to(device=self.device, dtype=torch.float32)
 
-            X_forward = self.sampler(
-                x0, model_forward, self.noise, self.interpolate, times, all_t)
-            X_backward = self.sampler(x1, model_backward, self.noise, self.interpolate, times, all_t, backward=True)
+            if self.mode == "direct":
+                X_forward = self.sampler.sample_direct(
+                    x0, model_0, self.noise, self.interpolate, times, all_t)
+                X_backward = self.sampler.sample_direct(x1, model_1, self.noise, self.interpolate, times, all_t, backward=True)
+            elif self.mode == "separate":
+                X_forward = self.sampler.sample_separate(x0, model_0, model_1, self.noise, self.interpolate, times, all_t, backward=False)
+                X_backward = self.sampler.sample_separate(x1, model_0, model_1, self.noise, self.interpolate, times, all_t, backward=True)
+            else:
+                raise ValueError()
 
             if all_t:
                 res_forward[:, start_cur:end_cur] = X_forward[:, :, 1]
@@ -234,37 +256,4 @@ class HilbertStochasticInterpolant:
         return res_forward, res_backward, l2_err_forward, l2_err_backward
 
     def test_one(self, state_dict, n_id, n_repeats, all_t):
-        self.logger.info("testing one")
-
-        model_forward = FNO(self.config)
-        model_forward.load_state_dict(
-            state_dict["forward"] if "forward" in state_dict else state_dict)
-        model_forward = model_forward.to(device=self.device)
-        model_forward.eval()
-
-        times = torch.linspace(
-            self.config["sampling"]["start_t"], self.config["sampling"]["end_t"], self.config["sampling"]["n_t_steps"])
-
-        test_dataset = get_dataset(
-            self.config["data"]["dataset"], phase="test")
-
-        x0, x1 = test_dataset[n_id]
-
-        x0 = x0.to(device=self.device, dtype=torch.float32)
-        x1 = x1.to(device=self.device, dtype=torch.float32)
-
-        x0 = x0[None].expand([n_repeats, x0.shape[0], x0.shape[1]])
-        x1 = x1[None].expand([n_repeats, x1.shape[0], x1.shape[1]])
-
-        X_forward = self.sampler(x0, model_forward, self.noise, times, all_t)
-
-        model_backward = FNO(self.config)
-        model_backward.load_state_dict(
-            state_dict["backward"] if "backward" in state_dict else state_dict)
-        model_backward = model_backward.to(device=self.device)
-        model_backward.eval()
-
-        X_backward = self.sampler(
-            x1, model_backward, self.noise, times, all_t, backward=True)
-
-        return X_forward, X_backward
+        raise NotImplementedError()

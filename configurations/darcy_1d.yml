@@ -21,7 +21,7 @@ fno:
   mlp_dropout: 0.1
   mlp_expansion: 4
 interpolate:
-  b: 0.005
+  b: 0.5
 noise:
   gain: 1.0
   len: 1.0
@@ -33,5 +33,7 @@ training:
   n_warmup_steps: 500
 sampling:
   n_t_steps: 100
-  start_t: 0.0
+  start_t: 0.001
   end_t: 0.999
+model: 
+  mode: separate
