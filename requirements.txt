@@ -10,3 +10,4 @@ packaging~=25.0
 opt-einsum~=3.4
 tqdm~=4.67
 matplotlib~=3.10
+gdown~=5.2
