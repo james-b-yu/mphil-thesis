@@ -31,6 +31,7 @@ training:
   grad_clip: 1.0
   lr: 1e-4
   n_warmup_steps: 500
+  n_cosine_cycle_steps: 5000
 sampling:
   n_t_steps: 100
   start_t: 0.001

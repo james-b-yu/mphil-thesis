@@ -12,7 +12,9 @@ class Training(TypedDict):
     grad_clip: float
     lr: float
     n_warmup_steps: int
-    
+    n_cosine_cycle_steps: int
+
+
 class Model(TypedDict):
     mode: Literal["direct", "separate"]
 
@@ -71,7 +73,7 @@ config_schema = Map({
         "dataset": Enum(["gridwatch", "darcy_1d"]),
     }),
     "model": Map({
-       "mode": Enum(["direct", "separate"]), 
+        "mode": Enum(["direct", "separate"]),
     }),
     "dimension": Int(),
     "interpolate": Map({
@@ -83,6 +85,7 @@ config_schema = Map({
         "grad_clip": Float(),
         "lr": Float(),
         "n_warmup_steps": Int(),
+        "n_cosine_cycle_steps": Int(),
     }),
     "sampling": Map({
         "n_t_steps": Int(),
