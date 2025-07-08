@@ -14,9 +14,10 @@ from torch.utils.data import DataLoader
 class Sampler:
     def __init__(self, config: Config):
         self.config = config
+        self.c = config["sampling"]["c"]
         
         def w(t: float, _: np.ndarray|None=None):
-            return np.exp(-( (1.0 - t) ** (-0.5) ))
+            return np.exp(-( (1.0 - t) ** (-self.c) )) if t < 1.0 else 0.0
         
         # set up time change
         theta_unscaled = solve_ivp(fun=w, t_span=(0, 1), y0=np.array([0], dtype=np.float32), dense_output=True)

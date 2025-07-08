@@ -34,12 +34,21 @@ class Interpolate:
     def get_weight_on_Ez(self, t: torch.Tensor, backward: bool):
         # note: this assumes that eps = b/2. by using closed-form, we avoid numerical error which was SIGNIFICANTLY degrading samples!
         
+        res = torch.zeros_like(t)
+        
+        Q = 1e3
+        
+        # cutoff ensures that all items in res are less in magnitude than Q, for numerical stability
         if not backward:
-            res = -(((self.b * t) / (1.0 - t)) ** 0.5)
+            cutoff = (Q ** 2) / (1 + Q ** 2)
+            res[t < cutoff] = -(((self.b * t[t < cutoff]) / (1.0 - t[t < cutoff])) ** 0.5)
+            res[t >= cutoff] = -1e3
         else:
-            res = -(((self.b * (1.0 - t)) / t) ** 0.5)
+            cutoff = 1.0 - (Q ** 2) / (1 + Q ** 2)
+            res[t > cutoff] = -(((self.b * (1.0 - t[t > cutoff])) / t[t > cutoff]) ** 0.5)
+            res[t <= cutoff] = -1e3
             
-        return res.clamp(-1e3, 1e3)
+        return res
 
     def get_target_forward_drift(self, t: torch.Tensor, x0: torch.Tensor, x1: torch.Tensor, z: torch.Tensor):
         """given a random sample from start and end distsm and time, calculate drift

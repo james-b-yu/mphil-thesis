@@ -23,6 +23,7 @@ class Sampling(TypedDict):
     n_t_steps: int
     start_t: float
     end_t: float
+    c: float
 
 
 class Noise(TypedDict):
@@ -91,6 +92,7 @@ config_schema = Map({
         "n_t_steps": Int(),
         "start_t": Float(),
         "end_t": Float(),
+        "c": Float(),
     }),
     "fno": Map({
         "n_in_channels": Int(),

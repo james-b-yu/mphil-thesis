@@ -33,8 +33,9 @@ training:
   n_warmup_steps: 5000
   n_cosine_cycle_steps: 5000
 sampling:
-  n_t_steps: 80
+  n_t_steps: 50
   start_t: 0
   end_t: 1
+  c: 1.0
 model: 
   mode: separate
