@@ -32,17 +32,14 @@ class Interpolate:
         return z
     
     def get_weight_on_Ez(self, t: torch.Tensor, backward: bool):
-        gamma_inv = (t * (1.0 - t)) ** (-0.5)
+        # note: this assumes that eps = b/2. by using closed-form, we avoid numerical error which was SIGNIFICANTLY degrading samples!
         
         if not backward:
-            res: torch.Tensor = 0.5 * ((self.b) ** 0.5) * (1.0 - 2.0 * t) * gamma_inv - self.eps * gamma_inv
+            res = -(((self.b * t) / (1.0 - t)) ** 0.5)
         else:
-            # XXX: must pass in 1-t
-            res: torch.Tensor = -0.5 * ((self.b) ** 0.5) * (1.0 - 2.0 * t) * gamma_inv - self.eps * gamma_inv
+            res = -(((self.b * (1.0 - t)) / t) ** 0.5)
             
-        res = res.clamp(-1e3, +1e3)
-        
-        return res
+        return res.clamp(-1e3, 1e3)
 
     def get_target_forward_drift(self, t: torch.Tensor, x0: torch.Tensor, x1: torch.Tensor, z: torch.Tensor):
         """given a random sample from start and end distsm and time, calculate drift

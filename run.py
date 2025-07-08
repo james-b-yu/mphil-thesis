@@ -37,7 +37,7 @@ def main():
             state_dict, args.max_n_samples, args.n_batch_size, args.all_t, phase="test")
         res_forward = res_forward.numpy()
         res_backward = res_backward.numpy()
-        print(f"Relative L2 Error. Forward: {err_forward:.2f}. Backward: {err_backward:.2f}")
+        print(f"Relative L2 Error. Forward: {100 * err_forward:.2f} %. Backward: {100 * err_backward:.2f} %")
         print(f"Saving to `{args.out_file}`...")
         np.savez_compressed(args.out_file, forward=res_forward, backward=res_backward)
 

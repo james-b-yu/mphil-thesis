@@ -29,12 +29,12 @@ training:
   n_epochs: 12000
   n_batch: 250
   grad_clip: 1.0
-  lr: 1e-4
-  n_warmup_steps: 500
+  lr: 2e-5
+  n_warmup_steps: 5000
   n_cosine_cycle_steps: 5000
 sampling:
-  n_t_steps: 100
-  start_t: 0.001
-  end_t: 0.999
+  n_t_steps: 80
+  start_t: 0
+  end_t: 1
 model: 
   mode: separate
