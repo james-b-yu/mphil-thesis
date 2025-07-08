@@ -6,8 +6,15 @@ from ._schema import Config, config_schema
 
 
 def parse():
-    # define inference variables
-    inference_parser = argparse.ArgumentParser(add_help=False)
+
+    # define the config shared parser
+    pipeline_parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+                                              add_help=False)
+    pipeline_parser.add_argument("--config", type=str, required=True,
+                                 help="path to config.yml")
+    # define the inference shared parser
+    inference_parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter, add_help=False)
     inference_parser.add_argument(
         "--pth", type=str, required=True, help="path to the .pth model file")
     inference_parser.add_argument("--n-batch-size", type=int, required=False,
@@ -23,8 +30,6 @@ def parse():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         add_help=True
     )
-    parser.add_argument("--config", type=str, required=True,
-                        help="path to config.yml")
     parser.add_argument("--logging-level", type=str,
                         choices=["info", "debug", "warning", "critical"], default="info")
     # add subparsers for commands
@@ -33,7 +38,7 @@ def parse():
 
     # define the train subparser
     train_parser = subparsers.add_parser(
-        name="train", help="train the model", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+        name="train", help="train the model", parents=[pipeline_parser], formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     train_parser.add_argument("--save-every", type=int,
                               required=False, default=500, help="save every x epochs")
     train_parser.add_argument("--save-dir", type=str,
@@ -43,30 +48,51 @@ def parse():
     train_parser.add_argument("--resume", type=str, required=False,
                               default=None, help="if specified, resume at given .pth file")
 
-    sample_parser = subparsers.add_parser(
-        name="sample", help="sample from the model", formatter_class=argparse.ArgumentDefaultsHelpFormatter, parents=[inference_parser])
-    sample_parser.add_argument(
-        "--n-samples", type=int, required=False, default=5, help="how many samples to create")
-
-    test_parser = subparsers.add_parser(
-        name="test", help="evaluate on test set", parents=[inference_parser])
-    test_parser.add_argument("--max-n-samples", type=int, default=None)
+    test_parser = subparsers.add_parser(name="test", help="evaluate model using test dataset", parents=[
+                                        pipeline_parser, inference_parser])
+    test_parser.add_argument(
+        "--max-n-samples", type=int, required=False, default=None, help="if specified, limit how many maximum samples to create")
 
     test_one_parser = subparsers.add_parser(
-        name="test_one", help="evaluate on one test example", parents=[inference_parser])
+        name="test_one", help="evaluate one test example", parents=[pipeline_parser, inference_parser])
     test_one_parser.add_argument("--n-repeats", type=int)
     test_one_parser.add_argument("--n-id", type=int)
 
+    diagnose_parser = subparsers.add_parser(name="diagnose", help="", parents=[
+                                            pipeline_parser, inference_parser])
+    diagnose_parser.add_argument("--n-id", type=int)
+
+    sample_parser = subparsers.add_parser(
+        name="sample", help="sample from the model", parents=[pipeline_parser, inference_parser], formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
+    sample_parser.add_argument(
+        "--n-samples", type=int, required=False, default=5, help="how many samples to create")
+
+    dataset_parser = subparsers.add_parser(
+        name="dataset-gen", help="generate datasets", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    dataset_parser.add_argument(
+        "dataset_name", type=str, help="name of the dataset", choices=["darcy_1d"])
+    dataset_parser.add_argument(
+        "--fineness", type=int, default=128, help="how many mesh subdivisions in each dimension"
+    )
+    dataset_parser.add_argument(
+        "--size", type=int, default=10_000, help="dataset size")
+    dataset_parser.add_argument(
+        "--dest", type=str, default="./data", help="dataset destination")
+    dataset_parser.add_argument("--seed", type=int, default=0, help="the seed")
+
     # parse args and config
     args = parser.parse_args()
-    if "config" not in args or not os.path.exists(args.config):
-        raise ValueError("Config not found or invalid")
+    config = None
+    if "config" in args:
+        if not os.path.exists(args.config):
+            raise ValueError("Config not found or invalid")
 
-    with open(args.config, "r") as f:
-        config = strictyaml.load(f.read(), schema=config_schema)
+        with open(args.config, "r") as f:
+            config = strictyaml.load(f.read(), schema=config_schema)
 
-    assert isinstance(config, strictyaml.YAML), "Invalid YAML"
+        assert isinstance(config, strictyaml.YAML), "Invalid YAML"
 
-    config = cast(Config, config.data)
+        config = cast(Config, config.data)
 
     return args, config
