@@ -49,6 +49,8 @@ def main():
         if args.dataset_name == "darcy_1d":
             generate_darcy_1d(logger, args.dest,
                               args.fineness, args.size, args.seed)
+        else:
+            raise ValueError()
     elif args.command == "sample":
         raise NotImplementedError()
 
