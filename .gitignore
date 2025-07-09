@@ -2,3 +2,5 @@ wandb/
 .conda/
 *.npz
 *.part
+data/
+*.zip
