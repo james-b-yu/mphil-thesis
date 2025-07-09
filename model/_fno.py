@@ -20,6 +20,7 @@ class FNO(nn.Module):
         super().__init__()
         self.config = config
         self.order = len(config["fno"]["n_modes"])
+        assert self.order == 1, "FNO does not support functions with >1 input dimension"
         self.n_hidden_channels = config["fno"]["n_hidden_channels"]
         self.n_in_channels = config["source_channels"] + \
             config["target_channels"]
