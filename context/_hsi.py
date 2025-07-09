@@ -27,7 +27,9 @@ class HilbertStochasticInterpolant:
         self.noise = Noise(config)
         self.interpolate = Interpolate(config)
         self.device = config["device"]
-        self.dimension = config["dimension"]
+        self.dimensions = config["dimensions"]
+        self.source_channels = config["source_channels"]
+        self.target_channels = config["target_channels"]
         self.sampler = Sampler(config)
         self.mode = config["model"]["mode"]
 
@@ -90,7 +92,7 @@ class HilbertStochasticInterpolant:
                 data_time += time() - data_start
 
                 t = torch.rand(x1.shape[0], device=self.device)
-                z = self.noise.sample(x1.shape)
+                z = self.noise.sample(x1.shape[:2])
 
                 xt = self.interpolate(t, x0, x1, z)
 
@@ -204,10 +206,10 @@ class HilbertStochasticInterpolant:
         test_loader = DataLoader(
             test_dataset, batch_size=n_batch_size, shuffle=False)
 
-        res_forward = torch.zeros(size=(len(times), n_samples, self.dimension)
-                                  if all_t else (n_samples, self.dimension))
+        res_forward = torch.zeros(size=(len(times), n_samples, self.target_channels, *self.dimensions)
+                                  if all_t else (n_samples, self.target_channels, *self.dimensions))
         res_backward = torch.zeros(size=(
-            len(times), n_samples, self.dimension) if all_t else (n_samples, self.dimension))
+            len(times), n_samples, self.source_channels, *self.dimensions) if all_t else (n_samples, self.source_channels, *self.dimensions))
 
         start_cur = 0
         l2_errs_forward = torch.zeros(
@@ -243,21 +245,27 @@ class HilbertStochasticInterpolant:
                 raise ValueError()
 
             if all_t:
-                res_forward[:, start_cur:end_cur] = X_forward[:, :, 1]
-                res_backward[:, start_cur:end_cur] = X_backward[:, :, 0]
+                res_forward[:, start_cur:end_cur] = X_forward[:,
+                                                              :, self.source_channels:]
+                res_backward[:, start_cur:end_cur] = X_backward[:,
+                                                                :, :self.source_channels]
             else:
-                res_forward[start_cur:end_cur] = X_forward[:, 1]
-                res_backward[start_cur:end_cur] = X_backward[:, 0]
+                res_forward[start_cur:end_cur] = X_forward[:,
+                                                           self.source_channels:]
+                res_backward[start_cur:end_cur] = X_backward[:,
+                                                             :self.source_channels]
 
             # now perform evaluation
             if all_t:
                 X_forward = X_forward[-1]
                 X_backward = X_backward[-1]
 
+            dims = tuple(range(1, 1 + len(self.dimensions) + 1))
+
             l2_errs_forward[start_cur:end_cur] = (
-                X_forward[:, 1] - x1[:, 1]).square().sum(dim=1) / x1[:, 1].square().sum(dim=1)
+                X_forward[:, self.source_channels:] - x1[:, self.source_channels:]).norm(dim=dims) / x1[:, self.source_channels:].norm(dim=dims)
             l2_errs_backward[start_cur:end_cur] = (
-                X_backward[:, 0] - x0[:, 0]).square().sum(dim=1) / x0[:, 0].square().sum(dim=1)
+                X_backward[:, :self.source_channels] - x0[:, :self.source_channels]).norm(dim=dims) / x0[:, :self.source_channels].norm(dim=dims)
 
             start_cur = end_cur
 

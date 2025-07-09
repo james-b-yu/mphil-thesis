@@ -1,6 +1,9 @@
 data:
   dataset: darcy_1d
-dimension: 128
+dimensions:
+  - 128
+source_channels: 1
+target_channels: 1
 device: cuda
 fno:
   n_lifting_channels: 256

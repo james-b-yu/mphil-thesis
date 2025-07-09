@@ -60,7 +60,11 @@ class Config(TypedDict):
     device: str
     data: Data
     model: Model
-    dimension: int
+    # e.g., a dataset where functions are evaluated on a 128x128 grid will have dimensions = [128, 128]
+    dimensions: list[int]
+    # e.g.: if source function has 2-dimensional output, then source_channels = 2
+    source_channels: int
+    target_channels: int
     interpolate: Interpolate
     training: Training
     sampling: Sampling
@@ -76,7 +80,9 @@ config_schema = Map({
     "model": Map({
         "mode": Enum(["direct", "separate"]),
     }),
-    "dimension": Int(),
+    "dimensions": Seq(Int()),
+    "source_channels": Int(),
+    "target_channels": Int(),
     "interpolate": Map({
         "b": Float(),
     }),

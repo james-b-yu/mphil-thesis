@@ -60,7 +60,7 @@ class Sampler:
 
             t_input = self.theta(t_input)
 
-            z = noise.sample(x.shape)
+            z = noise.sample(x.shape[:2])
 
             drift = model(x, t_input) if not backward else model(
                 x, 1.0 - t_input)
@@ -101,7 +101,7 @@ class Sampler:
             theta_input = torch.full(
                 (x.shape[0], ), fill_value=theta, device=x.device)
 
-            z = noise.sample(x.shape)
+            z = noise.sample(x.shape[:2])
 
             if i + 1 < len(times):
                 dtheta = (times[i + 1] - times[i]).item() * \
