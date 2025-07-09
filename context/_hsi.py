@@ -8,7 +8,7 @@ from ._sampler import Sampler
 from config import Config
 from argparse import Namespace
 from logging import Logger
-from datasets import get_dataset
+from my_datasets import get_dataset
 from model import FNO
 from torch.utils.data import DataLoader
 from torch.optim import AdamW

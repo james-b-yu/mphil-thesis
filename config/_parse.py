@@ -68,18 +68,32 @@ def parse():
     sample_parser.add_argument(
         "--n-samples", type=int, required=False, default=5, help="how many samples to create")
 
-    dataset_parser = subparsers.add_parser(
+    # command for generating my own custom datasets
+    dataset_gen_parser = subparsers.add_parser(
         name="dataset-gen", help="generate datasets", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    dataset_parser.add_argument(
+    dataset_gen_parser.add_argument(
         "dataset_name", type=str, help="name of the dataset", choices=["darcy_1d"])
-    dataset_parser.add_argument(
+    dataset_gen_parser.add_argument(
         "--fineness", type=int, default=128, help="how many mesh subdivisions in each dimension"
     )
-    dataset_parser.add_argument(
+    dataset_gen_parser.add_argument(
         "--size", type=int, default=10_000, help="dataset size")
-    dataset_parser.add_argument(
+    dataset_gen_parser.add_argument(
         "--dest", type=str, default="./data", help="dataset destination")
-    dataset_parser.add_argument("--seed", type=int, default=0, help="the seed")
+    dataset_gen_parser.add_argument(
+        "--seed", type=int, default=0, help="the seed")
+
+    # command for preprocessing the raw DiffusionPDE datasets
+    diffusion_pde_preprocess_parser = subparsers.add_parser(
+        name="diffusion-pde-preprocess", help="preprocess raw DiffusionPDE datasets", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    diffusion_pde_preprocess_parser.add_argument("--raw", dest="raw_loc", type=str, default="./data/diffusion_pde_raw",
+                                                 help="location of raw folder (should contain 'training' and 'testing' which in turn have subfolders for each dataset. no nested training inside training)")
+    diffusion_pde_preprocess_parser.add_argument(
+        "--dest", type=str, default="./data", help="dataset destination")
+    diffusion_pde_preprocess_parser.add_argument(
+        "--seed", type=int, default=0, help="the seed")
+    diffusion_pde_preprocess_parser.add_argument(
+        "dataset_name", type=str, help="name of the dataset", choices=["all", "darcy", "poisson", "helmholtz", "burger", "ns-nonbounded", "ns-bounded"])
 
     # parse args and config
     args = parser.parse_args()

@@ -71,7 +71,7 @@ class Config(TypedDict):
 config_schema = Map({
     "device": Str(),
     "data": Map({
-        "dataset": Enum(["gridwatch", "darcy_1d"]),
+        "dataset": Enum(["gridwatch", "darcy_1d", "darcy", "poisson", "helmholtz", "burger", "ns-nonbounded", "ns-bounded"]),
     }),
     "model": Map({
         "mode": Enum(["direct", "separate"]),

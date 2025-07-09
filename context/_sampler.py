@@ -5,23 +5,25 @@ from tqdm import tqdm
 from scipy.integrate import solve_ivp
 
 from ._interp import Interpolate
-from datasets import get_dataset
+from my_datasets import get_dataset
 from ._noise import Noise
 from config import Config
 from torch import nn
 from torch.utils.data import DataLoader
 
+
 class Sampler:
     def __init__(self, config: Config):
         self.config = config
         self.c = config["sampling"]["c"]
-        
-        def w(t: float, _: np.ndarray|None=None):
-            return np.exp(-( (1.0 - t) ** (-self.c) )) if t < 1.0 else 0.0
-        
+
+        def w(t: float, _: np.ndarray | None = None):
+            return np.exp(-((1.0 - t) ** (-self.c))) if t < 1.0 else 0.0
+
         # set up time change
-        theta_unscaled = solve_ivp(fun=w, t_span=(0, 1), y0=np.array([0], dtype=np.float32), dense_output=True)
-        
+        theta_unscaled = solve_ivp(fun=w, t_span=(0, 1), y0=np.array(
+            [0], dtype=np.float32), dense_output=True)
+
         self.theta_t = lambda t: w(t) / theta_unscaled.sol(1.0)
         self.theta = lambda t: theta_unscaled.sol(t) / theta_unscaled.sol(1.0)
 
@@ -55,7 +57,7 @@ class Sampler:
             t = t.item()
 
             t_input = torch.full((x.shape[0], ), fill_value=t, device=x.device)
-    
+
             t_input = self.theta(t_input)
 
             z = noise.sample(x.shape)
@@ -96,17 +98,21 @@ class Sampler:
 
         for i, s in enumerate(tqdm(times, leave=False)):
             theta = self.theta(s.item()).item()
-            theta_input = torch.full((x.shape[0], ), fill_value=theta, device=x.device)
+            theta_input = torch.full(
+                (x.shape[0], ), fill_value=theta, device=x.device)
 
             z = noise.sample(x.shape)
-            
+
             if i + 1 < len(times):
-                dtheta = (times[i + 1] - times[i]).item() * self.theta_t(s).item()  # allow for dynamic dt
+                dtheta = (times[i + 1] - times[i]).item() * \
+                    self.theta_t(s).item()  # allow for dynamic dt
 
             if not backward:
-                drift = model_EIt(x, theta_input) + interp.get_weight_on_Ez(theta_input, False)[:, None, None] * model_Ez(x, theta_input)
+                drift = model_EIt(x, theta_input) + interp.get_weight_on_Ez(
+                    theta_input, False)[:, None, None] * model_Ez(x, theta_input)
             else:
-                drift = -model_EIt(x, 1.0 - theta_input) + interp.get_weight_on_Ez(1.0 - theta_input, True)[:, None, None] * model_Ez(x, 1.0 - theta_input)
+                drift = -model_EIt(x, 1.0 - theta_input) + interp.get_weight_on_Ez(
+                    1.0 - theta_input, True)[:, None, None] * model_Ez(x, 1.0 - theta_input)
 
             diffusion = z * \
                 math.sqrt(2.0 * interp.eps * dtheta)
