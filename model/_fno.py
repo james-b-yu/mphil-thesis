@@ -21,8 +21,10 @@ class FNO(nn.Module):
         self.config = config
         self.order = len(config["fno"]["n_modes"])
         self.n_hidden_channels = config["fno"]["n_hidden_channels"]
-        self.n_in_channels = config["fno"]["n_in_channels"]
-        self.n_out_channels = config["fno"]["n_out_channels"]
+        self.n_in_channels = config["source_channels"] + \
+            config["target_channels"]
+        self.n_out_channels = config["source_channels"] + \
+            config["target_channels"]
         self.n_lifting_channels = config["fno"]["n_lifting_channels"]
         self.n_layers = config["fno"]["n_layers"]
         self.n_projection_channels = config["fno"]["n_projection_channels"]

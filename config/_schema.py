@@ -37,8 +37,6 @@ class Interpolate(TypedDict):
 
 
 class FNO(TypedDict):
-    n_in_channels: int
-    n_out_channels: int
     n_lifting_channels: int
     n_hidden_channels: int
     n_projection_channels: int
@@ -101,8 +99,6 @@ config_schema = Map({
         "c": Float(),
     }),
     "fno": Map({
-        "n_in_channels": Int(),
-        "n_out_channels": Int(),
         "n_lifting_channels": Int(),
         "n_hidden_channels": Int(),
         "n_projection_channels": Int(),

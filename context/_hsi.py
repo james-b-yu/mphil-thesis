@@ -143,7 +143,7 @@ class HilbertStochasticInterpolant:
                 scheduler_1.step()
 
                 self.logger.info(
-                    f"step: {step}, lr: {scheduler_0.get_last_lr()[0]:.2e} epoch: {epoch} forward: {torch.abs(mse_0).item():.2f} backward: {torch.abs(mse_1).item():.2f}, data time: {data_time / (i+1)}"
+                    f"step: {step}, lr: {scheduler_0.get_last_lr()[0]:.2e} epoch: {epoch} {"forward" if self.mode == "direct" else "EIt"}: {torch.abs(mse_0).item():.2f} {"backward" if self.mode == "direct" else "Ez"}: {torch.abs(mse_1).item():.2f}, data time: {data_time / (i+1)}"
                 )
                 wandb_run.log({
                     "step": step,

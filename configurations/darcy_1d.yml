@@ -9,8 +9,6 @@ fno:
   n_lifting_channels: 256
   n_hidden_channels: 256
   n_layers: 4
-  n_in_channels: 2
-  n_out_channels: 2
   n_projection_channels: 256
   n_time_embedding_dim: 256
   separable: True
