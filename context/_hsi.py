@@ -67,6 +67,8 @@ class HilbertStochasticInterpolant:
 
         model_0 = model_0.to(device=self.device)
         model_1 = model_1.to(device=self.device)
+        model_0.compile()
+        model_1.compile()
 
         optim_0 = AdamW(model_0.parameters(), amsgrad=True,
                         lr=max_lr)

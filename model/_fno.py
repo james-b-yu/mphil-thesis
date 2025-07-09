@@ -71,7 +71,7 @@ class FNO(nn.Module):
         t_embedding = get_t_embedding(t, self.n_lifting_channels)
         t_embedding = self.dense(t_embedding)
 
-        x = x + t_embedding[:, :, None]
+        x = x + t_embedding[:, :, *([None] * self.order)]
 
         for i in range(self.n_layers):
             x = F.gelu(x)

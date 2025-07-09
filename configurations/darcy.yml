@@ -1,18 +1,21 @@
 data:
   dataset: darcy
-dimension: 128
+dimensions:
+  - 128
+  - 128
+source_channels: 1
+target_channels: 1
 device: cuda
 fno:
-  n_lifting_channels: 256
-  n_hidden_channels: 256
+  n_lifting_channels: 32
+  n_hidden_channels: 32
   n_layers: 4
-  n_in_channels: 2
-  n_out_channels: 2
-  n_projection_channels: 256
-  n_time_embedding_dim: 256
+  n_projection_channels: 32
+  n_time_embedding_dim: 32
   separable: True
   skip_type: soft-gating
   n_modes:
+    - 64
     - 64
   norm_type: group
   factorisation_rank: 1
