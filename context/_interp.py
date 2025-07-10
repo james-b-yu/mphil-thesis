@@ -46,7 +46,7 @@ class Interpolate:
                 device = t.device
                 t = t.numpy(force=True).flatten()
             res = theta_unscaled.sol(t) / theta_unscaled.sol(1.0)
-            return res if not is_tensor else torch.tensor(res, dtype=dtype, device=device).reshape(shape)
+            return res if not is_tensor else torch.tensor(res, dtype=dtype, device=device).reshape(shape).clamp(0.0, 1.0)
 
         self.theta_t = theta_t
         self.theta = theta
@@ -64,6 +64,7 @@ class Interpolate:
 
         for _ in range(x0.dim() - t.dim()):
             t = t.unsqueeze(-1)
+
         gamma = (self.b * t * (1.0 - t)) ** 0.5
         return (1.0 - t) * x0 + (t) * x1 + gamma * z
 
@@ -106,10 +107,7 @@ class Interpolate:
         for _ in range(x0.dim() - t.dim()):
             t = t.unsqueeze(-1)
 
-        theta = self.theta(t)
-        theta_t = self.theta_t(t)
-
-        drift = (x1 - x0 + self.get_weight_on_Ez(theta, False) * z) * theta_t
+        drift = (x1 - x0 + self.get_weight_on_Ez(t, False) * z)
 
         return drift
 
@@ -122,10 +120,7 @@ class Interpolate:
         for _ in range(x0.dim() - t.dim()):
             t = t.unsqueeze(-1)
 
-        theta = self.theta(1.0 - t)
-        theta_t = self.theta_t(1.0 - t)
-
         drift = (-(x1 - x0) + self.get_weight_on_Ez(1.0 -
-                 theta, True) * z) * theta_t
+                 t, True) * z)
 
         return drift

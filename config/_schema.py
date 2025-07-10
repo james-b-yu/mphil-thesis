@@ -20,6 +20,7 @@ class Sampling(TypedDict):
     start_t: float
     end_t: float
     c: float
+    use_pc: bool
 
 
 class Noise(TypedDict):
@@ -105,6 +106,7 @@ config_schema = Map({
         "start_t": Float(),
         "end_t": Float(),
         "c": Float(),
+        "use_pc": Bool(),
     }),
     "model": Enum(["fno", "uno_2d"]),
     Optional("fno", default=None): Map({

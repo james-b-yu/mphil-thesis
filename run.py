@@ -38,12 +38,14 @@ def main():
         context = HilbertStochasticInterpolant(args, config, logger)
 
         state_dict = torch.load(args.pth)
-        res_forward, res_backward, err_forward, err_backward = context.test(
+        res_forward, res_backward, err_forward, err_backward, mse_forward, mse_backward = context.test(
             state_dict, args.max_n_samples, args.n_batch_size, args.all_t, phase="test")
         res_forward = res_forward.numpy()
         res_backward = res_backward.numpy()
         print(
             f"Relative L2 Error. Forward: {100 * err_forward:.2f} %. Backward: {100 * err_backward:.2f} %")
+        print(
+            f"MSE Error. Forward: {mse_forward:.2e}. Backward: {mse_backward:.2e}")
         print(f"Saving to `{args.out_file}`...")
         np.savez_compressed(
             args.out_file, forward=res_forward, backward=res_backward)

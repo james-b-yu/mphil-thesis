@@ -11,6 +11,7 @@ from torch import nn
 class Sampler:
     def __init__(self, config: Config):
         self.config = config
+        self.use_pc = config["sampling"]["use_pc"]
 
     @torch.no_grad()
     def sample_known(self, x: torch.Tensor, x0: torch.Tensor, x1: torch.Tensor, interp: Interpolate, noise: Noise, times: torch.Tensor):
@@ -18,7 +19,7 @@ class Sampler:
         raise NotImplementedError()
 
     @torch.no_grad()
-    def sample_direct(self, start: torch.Tensor, model: nn.Module, noise: Noise, interp: Interpolate, times: torch.Tensor, all_t: bool, backward: bool = False):
+    def sample_direct(self, start: torch.Tensor, model: nn.Module, noise: Noise, interp: Interpolate, times: torch.Tensor, all_t: bool):
         """Euler-Maruyama sampling
 
         Args:
@@ -45,13 +46,17 @@ class Sampler:
 
             z = noise.sample(x.shape[:2])
 
-            drift = model(x, t_input) if not backward else model(
-                x, 1.0 - t_input)
+            drift = model(x, t_input)
 
             diffusion = z * \
                 math.sqrt(2.0 * interp.eps * dt)
 
-            x = x + drift * dt + diffusion
+            x_orig = x
+            x = x_orig + drift * dt + diffusion  # Euler-Maruyama step
+
+            if self.use_pc and t + dt < times[-1]:
+                drift_tick = model(x, t_input + dt)
+                x = x_orig + 0.5 * (drift + drift_tick) * dt + diffusion
 
             if all_t:
                 res[i] = x
@@ -71,33 +76,48 @@ class Sampler:
 
         x = start
 
-        dtheta = 0
+        ds = dtheta = 0
 
         if all_t:
             res = torch.zeros(size=(len(times), *x.shape), device=x.device)
 
-        for i, s in enumerate(tqdm(times, leave=False)):
-            theta = interp.theta(s.item()).item()
+        def get_elements(s: float, xt: torch.Tensor, z: torch.Tensor):
+            theta = interp.theta(s).item()
             theta_input = torch.full(
-                (x.shape[0], ), fill_value=theta, device=x.device)
+                (xt.shape[0], ), fill_value=theta, device=x.device)
+
+            if not backward:
+                drift = model_EIt(xt, theta_input) + interp.get_weight_on_Ez(
+                    theta_input, False)[:, None, None] * model_Ez(xt, theta_input)
+            else:
+                drift = -model_EIt(xt, 1.0 - theta_input) + interp.get_weight_on_Ez(
+                    1.0 - theta_input, True)[:, None, None] * model_Ez(xt, 1.0 - theta_input)
+
+            diffusion = z * \
+                math.sqrt(2.0 * interp.eps)
+
+            return drift, diffusion
+
+        for i, s in enumerate(tqdm(times, leave=False)):
+            if i + 1 < len(times):
+                ds = (times[i + 1] - times[i]).item()  # allow for dynamic dt
+
+            theta_t = interp.theta_t(s).item()
 
             z = noise.sample(x.shape[:2])
 
-            if i + 1 < len(times):
-                dtheta = (times[i + 1] - times[i]).item() * \
-                    interp.theta_t(s).item()  # allow for dynamic dt
+            drift, diffusion = get_elements(s.item(), x, z)
+            drift, diffusion = drift * theta_t, diffusion * (theta_t ** 0.5)
 
-            if not backward:
-                drift = model_EIt(x, theta_input) + interp.get_weight_on_Ez(
-                    theta_input, False)[:, None, None] * model_Ez(x, theta_input)
-            else:
-                drift = -model_EIt(x, 1.0 - theta_input) + interp.get_weight_on_Ez(
-                    1.0 - theta_input, True)[:, None, None] * model_Ez(x, 1.0 - theta_input)
+            x_orig = x
+            x = x_orig + drift * ds + diffusion * (ds ** 0.5)
 
-            diffusion = z * \
-                math.sqrt(2.0 * interp.eps * dtheta)
-
-            x = x + drift * dtheta + diffusion
+            if self.use_pc and s + ds < times[-1]:
+                drift_tick, diffusion_tick = get_elements(s.item() + ds, x, z)
+                drift_tick, diffusion_tick = drift_tick * \
+                    theta_t, diffusion_tick * (theta_t ** 0.5)
+                x = x_orig + 0.5 * (drift + drift_tick) * ds + \
+                    0.5 * (diffusion + diffusion_tick) * (ds ** 0.5)
 
             if all_t:
                 res[i] = x

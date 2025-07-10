@@ -129,14 +129,20 @@ class HilbertStochasticInterpolant:
                 t = torch.rand(x1.shape[0], device=self.device)
                 z = self.noise.sample(x1.shape[:2])
 
-                xt = self.interpolate(t, x0, x1, z)
-
                 if self.mode == "direct":
+                    theta = self.interpolate.theta(t)
+                    theta_t = self.interpolate.theta_t(t)
+
+                    xt_0 = self.interpolate(theta, x0, x1, z)
+                    xt_1 = self.interpolate(1.0 - theta, x0, x1, z)
+
                     target_0 = self.interpolate.get_target_forward_drift(
-                        t, x0, x1, z)
+                        theta, x0, x1, z) * theta_t[:, *([None] * (1 + self.dimensions))]
                     target_1 = self.interpolate.get_target_backward_drift(
-                        t, x0, x1, z)
+                        theta, x0, x1, z) * theta_t[:, *([None] * (1 + self.dimensions))]
                 elif self.mode == "separate":
+                    xt_0 = xt_1 = self.interpolate(t, x0, x1, z)
+
                     target_0 = self.interpolate.get_target_EIt(t, x0, x1, z)
                     target_1 = self.interpolate.get_target_Ez(t, x0, x1, z)
                 else:
@@ -144,8 +150,8 @@ class HilbertStochasticInterpolant:
 
                 dims = tuple(range(1, 1 + self.dimensions + 1))
 
-                pred_0 = model_0(xt, t)
-                pred_1 = model_1(xt, t)
+                pred_0 = model_0(xt_0, t)
+                pred_1 = model_1(xt_1, t)
 
                 mse_0 = (target_0 -
                          # TODO: accommodate 2D etc
@@ -202,7 +208,7 @@ class HilbertStochasticInterpolant:
                     "backward" if self.mode == "direct" else "Ez": model_1.state_dict(),
                 }
 
-                _, _, err_forward, err_backward = self.test(
+                _, _, err_forward, err_backward, mse_forward, mse_backward = self.test(
                     # XXX: fix sampling!
                     state_dict, max_n_samples=None, n_batch_size=self.config["training"]["n_batch"], all_t=False, phase="valid")
 
@@ -210,6 +216,8 @@ class HilbertStochasticInterpolant:
                     "step": step,
                     "forward_valid_rel_l2_err": err_forward,
                     "backward_valid_rel_l2_err": err_backward,
+                    "forward_valid_rel_l2_mse": mse_forward,
+                    "backward_valid_rel_l2_mse": mse_backward,
                     "epoch": epoch
                 })
 
@@ -255,6 +263,10 @@ class HilbertStochasticInterpolant:
             size=(n_samples, ), dtype=torch.float32, device=self.device)
         l2_errs_backward = torch.zeros(
             size=(n_samples, ), dtype=torch.float32, device=self.device)
+        mse_errs_forward = torch.zeros(
+            size=(n_samples, ), dtype=torch.float32, device=self.device)
+        mse_errs_backward = torch.zeros(
+            size=(n_samples, ), dtype=torch.float32, device=self.device)
 
         for i, (x0, x1) in enumerate(tqdm(test_loader)):
             if start_cur >= n_samples:
@@ -274,7 +286,7 @@ class HilbertStochasticInterpolant:
                 X_forward = self.sampler.sample_direct(
                     x0, model_0, self.noise, self.interpolate, times, all_t)
                 X_backward = self.sampler.sample_direct(
-                    x1, model_1, self.noise, self.interpolate, times, all_t, backward=True)
+                    x1, model_1, self.noise, self.interpolate, times, all_t)
             elif self.mode == "separate":
                 X_forward = self.sampler.sample_separate(
                     x0, model_0, model_1, self.noise, self.interpolate, times, all_t, backward=False)
@@ -306,12 +318,19 @@ class HilbertStochasticInterpolant:
             l2_errs_backward[start_cur:end_cur] = (
                 X_backward[:, :self.source_channels] - x0[:, :self.source_channels]).norm(dim=dims) / x0[:, :self.source_channels].norm(dim=dims)
 
+            mse_errs_forward[start_cur:end_cur] = (
+                X_forward[:, self.source_channels:] - x1[:, self.source_channels:]).square().mean(dim=dims)
+            mse_errs_backward[start_cur:end_cur] = (
+                X_backward[:, :self.source_channels] - x0[:, :self.source_channels]).square().mean(dim=dims)
+
             start_cur = end_cur
 
         l2_err_forward = float(l2_errs_forward.mean())
         l2_err_backward = float(l2_errs_backward.mean())
+        mse_err_forward = float(mse_errs_forward.mean())
+        mse_err_backward = float(mse_errs_backward.mean())
 
-        return res_forward, res_backward, l2_err_forward, l2_err_backward
+        return res_forward, res_backward, l2_err_forward, l2_err_backward, mse_err_forward, mse_err_backward
 
     def test_one(self, state_dict, n_id, n_repeats, all_t):
         raise NotImplementedError()
