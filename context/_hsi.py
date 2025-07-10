@@ -9,13 +9,43 @@ from config import Config
 from argparse import Namespace
 from logging import Logger
 from my_datasets import get_dataset
-from model import FNO
+from model import FNO, UNO2d
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
 from time import time
 from wandb import init as wandb_init
 import math
+
+
+def get_model(config: Config):
+    if config["model"] == "fno":
+        return FNO(config)
+    elif config["model"] == "uno_2d":
+        assert config["uno_2d"] is not None
+        return UNO2d(
+            img_resolution=config["resolution"],
+            attn_resolutions=config["uno_2d"]["attn_resolutions"],
+            channel_mult=config["uno_2d"]["cres"],
+            channel_mult_emb=4,
+            channel_mult_noise=1,
+            decoder_type="standard",
+            disable_skip=False,
+            dropout=config["uno_2d"]["dropout"],
+            embedding_type="positional",
+            encoder_type="standard",
+            fmult=config["uno_2d"]["fmult"],
+            in_channels=config["source_channels"] + config["target_channels"],
+            out_channels=config["source_channels"] + config["target_channels"],
+            label_dim=0,
+            label_dropout=0,
+            model_channels=config["uno_2d"]["cbase"],
+            num_blocks=config["uno_2d"]["num_blocks"],
+            rank=config["uno_2d"]["rank"],
+            resample_filter=[1, 1],
+        )
+    else:
+        raise ValueError()
 
 
 class HilbertStochasticInterpolant:
@@ -28,19 +58,20 @@ class HilbertStochasticInterpolant:
         self.interpolate = Interpolate(config)
         self.device = config["device"]
         self.dimensions = config["dimensions"]
+        self.resolution = config["resolution"]
         self.source_channels = config["source_channels"]
         self.target_channels = config["target_channels"]
         self.sampler = Sampler(config)
-        self.mode = config["model"]["mode"]
+        self.mode = config["mode"]
 
     def train(self):
         wandb_run = wandb_init()
         self.logger.info("training")
 
         train_dataset = get_dataset(
-            self.config["data"]["dataset"], phase="train")
+            self.config["data"]["dataset"], phase="train", target_resolution=self.config["resolution"])
         train_loader = DataLoader(
-            train_dataset, batch_size=self.config["training"]["n_batch"], shuffle=True)
+            train_dataset, batch_size=self.config["training"]["n_batch"], shuffle=True, num_workers=self.args.n_dataworkers, prefetch_factor=self.args.n_prefetch_factor)
 
         n_warmup_steps = self.config["training"]["n_warmup_steps"]
         n_cosine_cycle_steps = self.config["training"]["n_cosine_cycle_steps"]
@@ -50,13 +81,15 @@ class HilbertStochasticInterpolant:
         def fractional(x): return x - math.floor(x)
 
         def lr_function(step: int):
-            if step >= n_warmup_steps:
+            if step >= n_warmup_steps and n_cosine_cycle_steps is not None:
                 return 0.5 * (1 + math.cos(math.pi * fractional((step - n_warmup_steps) / n_cosine_cycle_steps)))
+            elif step >= n_warmup_steps:
+                return max_lr
             else:
                 return (step / n_warmup_steps)
 
-        model_0 = FNO(self.config)  # forward if direct, EIt if separate
-        model_1 = FNO(self.config)  # backward if direct, Ez if separate
+        model_0 = get_model(self.config)  # forward if direct, EIt if separate
+        model_1 = get_model(self.config)  # backward if direct, Ez if separate
 
         if self.args.resume is not None:
             state_dict = torch.load(self.args.resume)
@@ -67,8 +100,8 @@ class HilbertStochasticInterpolant:
 
         model_0 = model_0.to(device=self.device)
         model_1 = model_1.to(device=self.device)
-        model_0.compile()
-        model_1.compile()
+        # model_0.compile()
+        # model_1.compile()
 
         optim_0 = AdamW(model_0.parameters(), amsgrad=True,
                         lr=max_lr)
@@ -109,15 +142,17 @@ class HilbertStochasticInterpolant:
                 else:
                     raise ValueError()
 
+                dims = tuple(range(1, 1 + self.dimensions + 1))
+
                 pred_0 = model_0(xt, t)
                 pred_1 = model_1(xt, t)
 
                 mse_0 = (target_0 -
                          # TODO: accommodate 2D etc
-                         pred_0).square().sum(dim=(1, 2)).mean(dim=0)
+                         pred_0).square().sum(dim=dims).mean(dim=0)
                 mse_1 = (target_1 -
                          # TODO: accommodate 2D etc
-                         pred_1).square().sum(dim=(1, 2)).mean(dim=0)
+                         pred_1).square().sum(dim=dims).mean(dim=0)
 
                 if torch.isnan(mse_0) or torch.isnan(mse_1):
                     self.logger.warning("encountered NAN loss. skipping")
@@ -145,7 +180,7 @@ class HilbertStochasticInterpolant:
                 scheduler_1.step()
 
                 self.logger.info(
-                    f"step: {step}, lr: {scheduler_0.get_last_lr()[0]:.2e} epoch: {epoch} {"forward" if self.mode == "direct" else "EIt"}: {torch.abs(mse_0).item():.2f} {"backward" if self.mode == "direct" else "Ez"}: {torch.abs(mse_1).item():.2f}, data time: {data_time / (i+1)}"
+                    f"step: {step}, lr: {scheduler_0.get_last_lr()[0]:.2e} epoch: {epoch} {"forward" if self.mode == "direct" else "EIt"}: {torch.abs(mse_0).item():.2f} {"backward" if self.mode == "direct" else "Ez"}: {torch.abs(mse_1).item():.2f}, data time: {data_time / (i+1):.2f}"
                 )
                 wandb_run.log({
                     "step": step,
@@ -186,13 +221,13 @@ class HilbertStochasticInterpolant:
     def test(self, state_dict: Mapping[str, Any], max_n_samples: int | None, n_batch_size: int, all_t: bool, phase: Literal["valid", "test"]):
         self.logger.info("testing")
 
-        model_0 = FNO(self.config)
+        model_0 = get_model(self.config)
         model_0.load_state_dict(
             state_dict["forward" if self.mode == "direct" else "EIt"])
         model_0 = model_0.to(device=self.device)
         model_0.eval()
 
-        model_1 = FNO(self.config)
+        model_1 = get_model(self.config)
         model_1.load_state_dict(
             state_dict["backward" if self.mode == "direct" else "Ez"])
         model_1 = model_1.to(device=self.device)
@@ -208,10 +243,12 @@ class HilbertStochasticInterpolant:
         test_loader = DataLoader(
             test_dataset, batch_size=n_batch_size, shuffle=False)
 
-        res_forward = torch.zeros(size=(len(times), n_samples, self.target_channels, *self.dimensions)
-                                  if all_t else (n_samples, self.target_channels, *self.dimensions))
+        resoln_dims = ([self.resolution] * self.dimensions)
+
+        res_forward = torch.zeros(size=(len(times), n_samples, self.target_channels, *resoln_dims)
+                                  if all_t else (n_samples, self.target_channels, *resoln_dims))
         res_backward = torch.zeros(size=(
-            len(times), n_samples, self.source_channels, *self.dimensions) if all_t else (n_samples, self.source_channels, *self.dimensions))
+            len(times), n_samples, self.source_channels, *resoln_dims) if all_t else (n_samples, self.source_channels, *resoln_dims))
 
         start_cur = 0
         l2_errs_forward = torch.zeros(
@@ -262,7 +299,7 @@ class HilbertStochasticInterpolant:
                 X_forward = X_forward[-1]
                 X_backward = X_backward[-1]
 
-            dims = tuple(range(1, 1 + len(self.dimensions) + 1))
+            dims = tuple(range(1, 1 + self.dimensions + 1))
 
             l2_errs_forward[start_cur:end_cur] = (
                 X_forward[:, self.source_channels:] - x1[:, self.source_channels:]).norm(dim=dims) / x1[:, self.source_channels:].norm(dim=dims)

@@ -1,7 +1,7 @@
 data:
   dataset: darcy_1d
-dimensions:
-  - 128
+dimensions: 1
+resolution: 128
 source_channels: 1
 target_channels: 1
 device: cuda

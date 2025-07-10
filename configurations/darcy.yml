@@ -1,44 +1,40 @@
 data:
   dataset: darcy
-dimensions:
-  - 128
-  - 128
+dimensions: 2
+resolution: 64
 source_channels: 1
 target_channels: 1
 device: cuda
-fno:
-  n_lifting_channels: 32
-  n_hidden_channels: 32
-  n_layers: 4
-  n_projection_channels: 32
-  n_time_embedding_dim: 32
-  separable: True
-  skip_type: soft-gating
-  n_modes:
-    - 64
-    - 64
-  norm_type: group
-  factorisation_rank: 1
-  factorisation_type: ComplexDense
-  fft_norm: ortho
-  mlp_dropout: 0.1
-  mlp_expansion: 4
+mode: separate
+model: uno_2d
+uno_2d:
+  attn_resolutions:
+    - 8
+  num_blocks: 4
+  fmult: 0.5
+  rank: 0.1
+  cbase: 64 # model_channels
+  cres: # channel_mult
+    - 1
+    - 2
+    - 4
+    - 4 
+  dropout: 0.13
 interpolate:
   b: 0.5
 noise:
   gain: 1.0
   len: 1.0
 training:
-  n_epochs: 12000
-  n_batch: 250
-  grad_clip: 1.0
-  lr: 2e-5
-  n_warmup_steps: 5000
-  n_cosine_cycle_steps: 5000
+  n_epochs: 250 # about 350000 steps
+  n_batch: 32
+  grad_clip: 100000.0
+  lr: 1e-4
+  n_warmup_steps: 170000
+  n_cosine_cycle_steps: null  # don't use cosine schedule
 sampling:
   n_t_steps: 50
   start_t: 0
   end_t: 1
   c: 1.0
-model: 
-  mode: separate
+  

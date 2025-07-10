@@ -1,5 +1,5 @@
 from typing import List, Literal, TypedDict
-from strictyaml import Map, Enum, Int, Seq, Bool, Float, Str
+from strictyaml import Map, Enum, Int, Seq, Bool, Float, Str, Optional, OrValidator, NullNone
 
 
 class Data(TypedDict):
@@ -12,11 +12,7 @@ class Training(TypedDict):
     grad_clip: float
     lr: float
     n_warmup_steps: int
-    n_cosine_cycle_steps: int
-
-
-class Model(TypedDict):
-    mode: Literal["direct", "separate"]
+    n_cosine_cycle_steps: int | None
 
 
 class Sampling(TypedDict):
@@ -54,19 +50,32 @@ class FNO(TypedDict):
     mlp_expansion: int
 
 
+class UNO2d(TypedDict):
+    attn_resolutions: list[int]
+    num_blocks: int
+    fmult: float
+    rank: float
+    cbase: int
+    cres: list[int]
+    dropout: float
+
+
 class Config(TypedDict):
     device: str
     data: Data
-    model: Model
-    # e.g., a dataset where functions are evaluated on a 128x128 grid will have dimensions = [128, 128]
-    dimensions: list[int]
+    mode: Literal["direct", "separate"]
+    # e.g., a dataset where functions are evaluated on a 128x128 grid will have dimensions = 2, resolution=128
+    dimensions: int
+    resolution: int
     # e.g.: if source function has 2-dimensional output, then source_channels = 2
     source_channels: int
     target_channels: int
     interpolate: Interpolate
     training: Training
     sampling: Sampling
-    fno: FNO
+    model: Literal["fno", "uno_2d"]
+    fno: FNO | None
+    uno_2d: UNO2d | None
     noise: Noise
 
 
@@ -75,10 +84,9 @@ config_schema = Map({
     "data": Map({
         "dataset": Enum(["gridwatch", "darcy_1d", "darcy", "poisson", "helmholtz", "burger", "ns-nonbounded", "ns-bounded"]),
     }),
-    "model": Map({
-        "mode": Enum(["direct", "separate"]),
-    }),
-    "dimensions": Seq(Int()),
+    "mode": Enum(["direct", "separate"]),
+    "dimensions": Int(),
+    "resolution": Int(),
     "source_channels": Int(),
     "target_channels": Int(),
     "interpolate": Map({
@@ -90,7 +98,7 @@ config_schema = Map({
         "grad_clip": Float(),
         "lr": Float(),
         "n_warmup_steps": Int(),
-        "n_cosine_cycle_steps": Int(),
+        "n_cosine_cycle_steps": OrValidator(Int(), NullNone()),
     }),
     "sampling": Map({
         "n_t_steps": Int(),
@@ -98,7 +106,8 @@ config_schema = Map({
         "end_t": Float(),
         "c": Float(),
     }),
-    "fno": Map({
+    "model": Enum(["fno", "uno_2d"]),
+    Optional("fno", default=None): Map({
         "n_lifting_channels": Int(),
         "n_hidden_channels": Int(),
         "n_projection_channels": Int(),
@@ -113,6 +122,15 @@ config_schema = Map({
         "fft_norm": Enum(["forward", "backward", "ortho"]),
         "mlp_dropout": Float(),
         "mlp_expansion": Int(),
+    }),
+    Optional("uno_2d", default=None): Map({
+        "attn_resolutions": Seq(Int()),
+        "num_blocks": Int(),
+        "fmult": Float(),
+        "rank": Float(),
+        "cbase": Int(),
+        "cres": Seq(Int()),
+        "dropout": Float(),
     }),
     "noise": Map({
         "gain": Float(),

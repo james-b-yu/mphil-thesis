@@ -255,7 +255,7 @@ def prep_diffusion_pde(logger: Logger, in_prefix: str, out_path: str, ds_name: s
 
 
 class DiffusionPDEDataset(TorchDataset):
-    def __init__(self, ds_name: str, loc: str, phase: Literal["train", "valid", "test"]):
+    def __init__(self, ds_name: str, loc: str, phase: Literal["train", "valid", "test"], target_resolution: int):
         super().__init__()
 
         assert ds_name in METADATA
@@ -264,11 +264,20 @@ class DiffusionPDEDataset(TorchDataset):
         assert loc_path.is_dir()
 
         self._hf_dataset_dict = load_from_disk(dataset_path=str(loc_path))
+        self._hf_dataset_dict.set_format("torch")
         self._source_name = METADATA[ds_name]["source"]["name"]
         self._target_name = METADATA[ds_name]["target"]["name"]
 
         assert isinstance(self._hf_dataset_dict, DatasetDict)
         assert phase in self._hf_dataset_dict
+
+        raw_resolution = self._hf_dataset_dict[phase][0][self._source_name].shape[-2]
+        assert raw_resolution == self._hf_dataset_dict[phase][0][
+            self._source_name].shape[-1] == self._hf_dataset_dict[phase][0][self._target_name].shape[-2] == self._hf_dataset_dict[phase][0][self._target_name].shape[-1]
+
+        assert target_resolution < raw_resolution and raw_resolution % target_resolution == 0
+
+        self._downsample_factor = raw_resolution // target_resolution
 
         self._hf_ds = self._hf_dataset_dict[phase]
 
@@ -278,8 +287,10 @@ class DiffusionPDEDataset(TorchDataset):
     def __getitem__(self, idx):
         row = self._hf_ds[idx]
 
-        source = torch.as_tensor(row[self._source_name], dtype=torch.float32)
-        target = torch.as_tensor(row[self._target_name], dtype=torch.float32)
+        source = torch.as_tensor(row[self._source_name], dtype=torch.float32)[
+            ..., ::self._downsample_factor, ::self._downsample_factor]
+        target = torch.as_tensor(row[self._target_name], dtype=torch.float32)[
+            ..., ::self._downsample_factor, ::self._downsample_factor]
 
         x0 = torch.stack((source, torch.zeros_like(target)), dim=0)
         x1 = torch.stack((torch.zeros_like(source), target), dim=0)

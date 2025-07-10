@@ -18,7 +18,9 @@ def _ddpm_init(m: nn.Module):
 class FNO(nn.Module):
     def __init__(self, config: Config):
         super().__init__()
+        assert config["fno"] is not None
         self.config = config
+        assert self.config["fno"] is not None
         self.order = len(config["fno"]["n_modes"])
         assert self.order == 1, "FNO does not support functions with >1 input dimension"
         self.n_hidden_channels = config["fno"]["n_hidden_channels"]
@@ -47,8 +49,8 @@ class FNO(nn.Module):
                                    type=self.skip_type, n_dim=self.order) for _ in range(self.n_layers)])
 
         self.mlp = nn.ModuleList(
-            [MLP(in_channels=self.n_hidden_channels, hidden_channels=int(round(self.n_hidden_channels*self.config["fno"]["mlp_expansion"])),
-                 dropout=self.config["fno"]["mlp_dropout"], n_dim=self.order, t_embedding_dim=self.n_hidden_channels) for _ in range(self.n_layers)]
+            [MLP(in_channels=self.n_hidden_channels, hidden_channels=int(round(self.n_hidden_channels * config["fno"]["mlp_expansion"])),
+                 dropout=config["fno"]["mlp_dropout"], n_dim=self.order, t_embedding_dim=self.n_hidden_channels) for _ in range(self.n_layers)]
         )
         self.mlp_skips = nn.ModuleList([skip_connection(
             self.n_hidden_channels, self.n_hidden_channels, type=self.skip_type, n_dim=self.order) for _ in range(self.n_layers)])

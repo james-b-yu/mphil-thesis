@@ -47,6 +47,8 @@ def parse():
         "--start-epoch", type=int, required=False, default=1, help="1-indexed")
     train_parser.add_argument("--resume", type=str, required=False,
                               default=None, help="if specified, resume at given .pth file")
+    train_parser.add_argument("--n-dataworkers", type=int, default=6)
+    train_parser.add_argument("--n-prefetch-factor", type=int, default=2)
 
     test_parser = subparsers.add_parser(name="test", help="evaluate model using test dataset", parents=[
                                         pipeline_parser, inference_parser])

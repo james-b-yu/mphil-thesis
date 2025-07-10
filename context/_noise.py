@@ -13,21 +13,17 @@ class Noise:
         self.config = config
         self.device = config["device"]
         self.dimensions = config["dimensions"]
-        assert isinstance(self.dimensions, list)
+        self.resolution = config["resolution"]
 
-        self.total_points = int(np.prod(self.dimensions))
-
-        Ks = []
+        self.total_points = self.resolution ** self.dimensions
 
         # create a 1d kernel matrix for each input dimension; dim is the number of grid points in the direction of that dimension
-        for dim in self.dimensions:
-            x = np.linspace(0, 1, dim)
-            K = config["noise"]["gain"] * np.exp(-0.5 *
-                                                 (x[:, None] - x[None, :])**2 / config["noise"]["len"]**2)
-            Ks.append(K)
+        x = np.linspace(0, 1, self.resolution)
+        K = config["noise"]["gain"] * np.exp(-0.5 *
+                                             (x[:, None] - x[None, :])**2 / config["noise"]["len"]**2)
 
         # combine 1d kernels for each dimension into an overall K-matrix via Kronecker product
-        K = reduce(np.kron, Ks)
+        K = reduce(np.kron, [K] * self.dimensions)
 
         # gram matrix K
         K_chol = np.linalg.cholesky(K + np.eye(self.total_points) * 1e-8)
@@ -42,4 +38,4 @@ class Noise:
         z = torch.randn(size=(*batch_size, self.total_points),
                         device=self.config["device"], dtype=torch.float32)
         sample_flat = z @ self.L.T
-        return sample_flat.view(*batch_size, *self.dimensions)
+        return sample_flat.view(*batch_size, *([self.resolution] * self.dimensions))
