@@ -1,18 +1,60 @@
 import torch
 from config import Config
+from scipy.integrate import solve_ivp
+import numpy as np
 
 
 class Interpolate:
     def __init__(self, config: Config):
         self.config = config
         self.b = config["interpolate"]["b"]
+        self.c = config["sampling"]["c"]
         self.eps = self.b / 2.0
         # TODO: enable other schedules
 
-    def __call__(self, *args, **kwargs):
-        return self.interplate(*args, **kwargs)
+        def w(t: float | np.ndarray, _: np.ndarray | None = None):
+            if isinstance(t, np.ndarray):
+                res = np.zeros_like(t)
+                res[t < 1.0] = np.exp(-((1.0 - t[t < 1.0]) ** (-self.c)))
+                return res
+            elif isinstance(t, float):
+                return np.exp(-((1.0 - t) ** (-self.c))) if t < 1.0 else 0.0
+            else:
+                raise ValueError()
 
-    def interplate(self, t: torch.Tensor, x0: torch.Tensor, x1: torch.Tensor, z: torch.Tensor):
+        # set up time change
+        theta_unscaled = solve_ivp(fun=w, t_span=(0, 1), y0=np.array(
+            [0], dtype=np.float32), dense_output=True)
+
+        def theta_t(t: float | np.ndarray | torch.Tensor):
+            is_tensor = False
+            if isinstance(t, torch.Tensor):
+                is_tensor = True
+                shape = t.shape
+                dtype = t.dtype
+                device = t.device
+                t = t.numpy(force=True)
+            res = w(t) / theta_unscaled.sol(1.0)
+            return res if not is_tensor else torch.tensor(res, dtype=dtype, device=device).reshape(shape)
+
+        def theta(t: float | np.ndarray | torch.Tensor):
+            is_tensor = False
+            if isinstance(t, torch.Tensor):
+                is_tensor = True
+                shape = t.shape
+                dtype = t.dtype
+                device = t.device
+                t = t.numpy(force=True).flatten()
+            res = theta_unscaled.sol(t) / theta_unscaled.sol(1.0)
+            return res if not is_tensor else torch.tensor(res, dtype=dtype, device=device).reshape(shape)
+
+        self.theta_t = theta_t
+        self.theta = theta
+
+    def __call__(self, *args, **kwargs):
+        return self.interpolate(*args, **kwargs)
+
+    def interpolate(self, t: torch.Tensor, x0: torch.Tensor, x1: torch.Tensor, z: torch.Tensor):
         """get xt from t, x0, x1, z
         """
         assert t.dim() == 1
@@ -30,24 +72,26 @@ class Interpolate:
 
     def get_target_Ez(self, t: torch.Tensor, x0: torch.Tensor, x1: torch.Tensor, z: torch.Tensor):
         return z
-    
+
     def get_weight_on_Ez(self, t: torch.Tensor, backward: bool):
         # note: this assumes that eps = b/2. by using closed-form, we avoid numerical error which was SIGNIFICANTLY degrading samples!
-        
+
         res = torch.zeros_like(t)
-        
+
         Q = 1e3
-        
+
         # cutoff ensures that all items in res are less in magnitude than Q, for numerical stability
         if not backward:
             cutoff = (Q ** 2) / (1 + Q ** 2)
-            res[t < cutoff] = -(((self.b * t[t < cutoff]) / (1.0 - t[t < cutoff])) ** 0.5)
+            res[t < cutoff] = - \
+                (((self.b * t[t < cutoff]) / (1.0 - t[t < cutoff])) ** 0.5)
             res[t >= cutoff] = -1e3
         else:
             cutoff = 1.0 - (Q ** 2) / (1 + Q ** 2)
-            res[t > cutoff] = -(((self.b * (1.0 - t[t > cutoff])) / t[t > cutoff]) ** 0.5)
+            res[t > cutoff] = - \
+                (((self.b * (1.0 - t[t > cutoff])) / t[t > cutoff]) ** 0.5)
             res[t <= cutoff] = -1e3
-            
+
         return res
 
     def get_target_forward_drift(self, t: torch.Tensor, x0: torch.Tensor, x1: torch.Tensor, z: torch.Tensor):
@@ -62,16 +106,12 @@ class Interpolate:
         for _ in range(x0.dim() - t.dim()):
             t = t.unsqueeze(-1)
 
-        # TODO: support other interpolants
-        # for now, we define
-        # I(t, x0, x1) = (1-t) x0 + (t) x1
-        # gamma(t) = sqrt(t(1-t))
-        gamma_inv = (t * (1.0 - t)) ** (-0.5)
+        theta = self.theta(t)
+        theta_t = self.theta_t(t)
 
-        velocity = x1 - x0 + 0.5 * ((self.b) ** 0.5) * (1.0 - 2.0 * t) * gamma_inv * z
-        score = - self.eps * gamma_inv * z
+        drift = (x1 - x0 + self.get_weight_on_Ez(theta, False) * z) * theta_t
 
-        return velocity + score
+        return drift
 
     def get_target_backward_drift(self, t: torch.Tensor, x0: torch.Tensor, x1: torch.Tensor, z: torch.Tensor):
         assert t.dim() == 1
@@ -82,13 +122,10 @@ class Interpolate:
         for _ in range(x0.dim() - t.dim()):
             t = t.unsqueeze(-1)
 
-        # TODO: support other interpolants
-        # for now, we define
-        # I(t, x0, x1) = (1-t) x0 + (t) x1
-        # gamma(t) = sqrt(t(1-t))
-        gamma_inv = (t * (1.0 - t)) ** (-0.5)
+        theta = self.theta(1.0 - t)
+        theta_t = self.theta_t(1.0 - t)
 
-        velocity = -(x1 - x0 + 0.5 * ((self.b) ** 0.5) * (1.0 - 2.0 * t) * gamma_inv * z)
-        score = -self.eps * gamma_inv * z
+        drift = (-(x1 - x0) + self.get_weight_on_Ez(1.0 -
+                 theta, True) * z) * theta_t
 
-        return velocity + score
+        return drift

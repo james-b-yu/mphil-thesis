@@ -84,7 +84,7 @@ class HilbertStochasticInterpolant:
             if step >= n_warmup_steps and n_cosine_cycle_steps is not None:
                 return 0.5 * (1 + math.cos(math.pi * fractional((step - n_warmup_steps) / n_cosine_cycle_steps)))
             elif step >= n_warmup_steps:
-                return max_lr
+                return 1.0
             else:
                 return (step / n_warmup_steps)
 

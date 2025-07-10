@@ -31,10 +31,10 @@ noise:
 training:
   n_epochs: 12000
   n_batch: 250
-  grad_clip: 1.0
-  lr: 2e-5
+  grad_clip: 10000
+  lr: 1e-4
   n_warmup_steps: 500
-  n_cosine_cycle_steps: 5000
+  n_cosine_cycle_steps: null
 sampling:
   n_t_steps: 50
   start_t: 0
