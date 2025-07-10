@@ -5,6 +5,8 @@ resolution: 128
 source_channels: 1
 target_channels: 1
 device: cuda
+mode: direct
+model: fno
 fno:
   n_lifting_channels: 256
   n_hidden_channels: 256
@@ -31,12 +33,11 @@ training:
   n_batch: 250
   grad_clip: 1.0
   lr: 2e-5
-  n_warmup_steps: 5000
+  n_warmup_steps: 500
   n_cosine_cycle_steps: 5000
 sampling:
   n_t_steps: 50
   start_t: 0
   end_t: 1
   c: 1.0
-model: 
-  mode: separate
+  

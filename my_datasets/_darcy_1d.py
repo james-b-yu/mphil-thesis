@@ -152,8 +152,10 @@ def generate_dataset(logger: Logger, dest_dir: str, grid_fineness=128, n_functio
 
 class Darcy1dDataset(torch.utils.data.Dataset):
     @torch.no_grad()
-    def __init__(self, loc: str, phase: Literal["train", "valid", "test"], seed: int = 0):
+    def __init__(self, loc: str, phase: Literal["train", "valid", "test"], seed: int = 0, target_resolution: int = 128):
         super().__init__()
+
+        assert target_resolution == 128
 
         loc = path.realpath(loc)
         if not path.isdir(loc):
