@@ -17,6 +17,7 @@ from torch.utils.data import DataLoader
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
 from time import time
+from datetime import timedelta
 from wandb import init as wandb_init
 import math
 
@@ -136,6 +137,17 @@ class HilbertStochasticInterpolant:
         scheduler_0 = LambdaLR(optim_0, lr_function)
         scheduler_1 = LambdaLR(optim_1, lr_function)
 
+        total_steps = (self.config["training"]["n_epochs"] +
+                       1 - self.args.start_epoch) * len(train_loader)
+        train_start = time()
+
+        self.logger.info(f"Using lr ramp-up of {n_warmup_steps} steps")
+        self.logger.info(
+            f"Using EMA with a half life of {self.n_ema_half_life_steps} steps, equivalent to a decay rate of {ema_update_0.decay}")
+        if n_cosine_cycle_steps is not None:
+            self.logger.info(
+                f"Cosine annealing with warm restarts of cycle length {n_cosine_cycle_steps} steps")
+
         for epoch in range(self.args.start_epoch, self.config["training"]
                            ["n_epochs"] + 1):
             data_start = time()
@@ -150,6 +162,9 @@ class HilbertStochasticInterpolant:
                 x1 = x1.to(self.device, dtype=torch.float32).squeeze(-1)
 
                 data_time += time() - data_start
+                elapsed_time = time() - train_start
+                avg_time_per_step = elapsed_time / (step)
+                eta_time = avg_time_per_step * (total_steps - step)
 
                 t = torch.rand(x1.shape[0], device=self.device)
                 z = self.noise.sample(x1.shape[:2])
@@ -213,7 +228,7 @@ class HilbertStochasticInterpolant:
                 scheduler_1.step()
 
                 self.logger.info(
-                    f"step: {step}, lr: {scheduler_0.get_last_lr()[0]:.2e} epoch: {epoch} {"forward" if self.mode == "direct" else "EIt"}: {torch.abs(mse_0).item():.2f} {"backward" if self.mode == "direct" else "Ez"}: {torch.abs(mse_1).item():.2f}, data time: {data_time / (i+1):.2f}"
+                    f"step: {step}, lr: {scheduler_0.get_last_lr()[0]:.2e} epoch: {epoch} ({100 * i / len(train_loader):.1f} %) {"forward" if self.mode == "direct" else "EIt"}: {torch.abs(mse_0).item():.2f} {"backward" if self.mode == "direct" else "Ez"}: {torch.abs(mse_1).item():.2f}, data time: {data_time / (i+1):.2f}, secs/step: {avg_time_per_step:.2f}, eta: {timedelta(seconds=eta_time)}"
                 )
                 wandb_run.log({
                     "step": step,
@@ -222,7 +237,9 @@ class HilbertStochasticInterpolant:
                     "backward_loss" if self.mode == "direct" else "Ez_loss": mse_1,
                     "forward_gradnorm" if self.mode == "direct" else "EIt_gradnorm": norm_0,
                     "backward_gradnorm" if self.mode == "direct" else "Ez_gradnorm": norm_1,
-                    "epoch": epoch
+                    "epoch": epoch,
+                    "eta_seconds": eta_time,
+                    "seconds_per_step": avg_time_per_step,
                 })
 
                 data_start = time()
