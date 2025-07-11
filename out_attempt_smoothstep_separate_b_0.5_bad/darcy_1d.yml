@@ -5,7 +5,7 @@ resolution: 128
 source_channels: 1
 target_channels: 1
 device: cuda
-mode: direct
+mode: separate
 model: fno
 fno:
   n_lifting_channels: 256
@@ -24,25 +24,24 @@ fno:
   mlp_dropout: 0.1
   mlp_expansion: 4
 interpolate:
-  schedule: lerp
-  b: 0.01
+  b: 0.5
 noise:
   gain: 1.0
   len: 1.0
 training:
   n_epochs: 12000
   n_batch: 250
-  grad_clip: 100.0
+  grad_clip: 10000.0
   lr: 1e-4
   n_warmup_steps: 500
   n_cosine_cycle_steps: 50000
   n_ema_half_life_steps: 69
 sampling:
-  n_t_steps: 200
+  n_t_steps: 100
   start_t: 0.0
   end_t: 1.0
   c: 1.0
-  use_pc: true  # whether to use predictor-corrector
+  use_pc: false  # whether to use predictor-corrector
 
 # means: tensor([3.8022e-04, 5.6180e-05])
 # stds: tensor([1.0008, 0.1469])

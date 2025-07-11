@@ -31,7 +31,7 @@ class Noise(TypedDict):
 
 class Interpolate(TypedDict):
     b: float
-    # TODO: ADD OTHER SCHEDULES
+    schedule: Literal["lerp", "smoothstep"]
 
 
 class FNO(TypedDict):
@@ -93,6 +93,7 @@ config_schema = Map({
     "target_channels": Int(),
     "interpolate": Map({
         "b": Float(),
+        "schedule": Enum(["lerp", "smoothstep"]),
     }),
     "training": Map({
         "n_batch": Int(),

@@ -8,6 +8,7 @@ class Interpolate:
     def __init__(self, config: Config):
         self.config = config
         self.b = config["interpolate"]["b"]
+        self.schedule = config["interpolate"]["schedule"]
         self.c = config["sampling"]["c"]
         self.eps = self.b / 2.0
         # TODO: enable other schedules
@@ -66,10 +67,23 @@ class Interpolate:
             t = t.unsqueeze(-1)
 
         gamma = (self.b * t * (1.0 - t)) ** 0.5
-        return (1.0 - t) * x0 + (t) * x1 + gamma * z
+        if self.schedule == "lerp":
+            return (1.0 - t) * x0 + (t) * x1 + gamma * z
+        elif self.schedule == "smoothstep":
+            return (2 * t ** 3 - 3 * t ** 2 + 1) * x0 + (-2 * t ** 3 + 3 * t ** 2) * x1 + gamma * z
+        else:
+            raise ValueError()
 
     def get_target_EIt(self, t: torch.Tensor, x0: torch.Tensor, x1: torch.Tensor, z: torch.Tensor):
-        return x1 - x0
+        for _ in range(x0.dim() - t.dim()):
+            t = t.unsqueeze(-1)
+
+        if self.schedule == "lerp":
+            return x1 - x0
+        elif self.schedule == "smoothstep":
+            return (6 * t ** 2 - 6 * t) * x0 + (-6 * t ** 2 + 6 * t) * x1
+        else:
+            raise ValueError()
 
     def get_target_Ez(self, t: torch.Tensor, x0: torch.Tensor, x1: torch.Tensor, z: torch.Tensor):
         return z
@@ -83,12 +97,12 @@ class Interpolate:
 
         # cutoff ensures that all items in res are less in magnitude than Q, for numerical stability
         if not backward:
-            cutoff = (Q ** 2) / (1 + Q ** 2)
+            cutoff = (Q ** 2) / (self.b + Q ** 2)
             res[t < cutoff] = - \
                 (((self.b * t[t < cutoff]) / (1.0 - t[t < cutoff])) ** 0.5)
             res[t >= cutoff] = -1e3
         else:
-            cutoff = 1.0 - (Q ** 2) / (1 + Q ** 2)
+            cutoff = 1.0 - (Q ** 2) / (self.b + Q ** 2)
             res[t > cutoff] = - \
                 (((self.b * (1.0 - t[t > cutoff])) / t[t > cutoff]) ** 0.5)
             res[t <= cutoff] = -1e3
@@ -107,7 +121,8 @@ class Interpolate:
         for _ in range(x0.dim() - t.dim()):
             t = t.unsqueeze(-1)
 
-        drift = (x1 - x0 + self.get_weight_on_Ez(t, False) * z)
+        drift = (self.get_target_EIt(t, x0, x1, z) +
+                 self.get_weight_on_Ez(t, False) * z)
 
         return drift
 
@@ -120,7 +135,7 @@ class Interpolate:
         for _ in range(x0.dim() - t.dim()):
             t = t.unsqueeze(-1)
 
-        drift = (-(x1 - x0) + self.get_weight_on_Ez(1.0 -
+        drift = (-self.get_target_EIt(1.0 - t, x0, x1, z) + self.get_weight_on_Ez(1.0 -
                  t, True) * z)
 
         return drift
