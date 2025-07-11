@@ -5,7 +5,7 @@ resolution: 64
 source_channels: 1
 target_channels: 1
 device: cuda
-mode: separate
+mode: direct
 model: uno_2d
 uno_2d:
   attn_resolutions:
@@ -21,6 +21,7 @@ uno_2d:
     - 4 
   dropout: 0.13
 interpolate:
+  schedule: lerp
   b: 0.5
 noise:
   gain: 1.0
@@ -32,9 +33,10 @@ training:
   lr: 1e-4
   n_warmup_steps: 170000
   n_cosine_cycle_steps: null  # don't use cosine schedule
+  n_ema_half_life_steps: 17000
 sampling:
-  n_t_steps: 50
+  n_t_steps: 100
   start_t: 0
   end_t: 1
   c: 1.0
-  
+  use_pc: true
