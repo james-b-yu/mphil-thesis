@@ -306,7 +306,7 @@ class HilbertStochasticInterpolant:
             self.config["sampling"]["start_t"], self.config["sampling"]["end_t"], self.config["sampling"]["n_t_steps"])
 
         test_dataset = get_dataset(
-            self.config["data"]["dataset"], phase="test")
+            self.config["data"]["dataset"], phase="test", target_resolution=self.config["resolution"])
         n_samples = min(max_n_samples, len(test_dataset)
                         ) if max_n_samples is not None else len(test_dataset)
         test_loader = DataLoader(
