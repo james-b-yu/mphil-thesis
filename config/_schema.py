@@ -13,6 +13,7 @@ class Training(TypedDict):
     lr: float
     n_warmup_steps: int
     n_cosine_cycle_steps: int | None
+    n_ema_half_life_steps: int
 
 
 class Sampling(TypedDict):
@@ -100,6 +101,7 @@ config_schema = Map({
         "lr": Float(),
         "n_warmup_steps": Int(),
         "n_cosine_cycle_steps": OrValidator(Int(), NullNone()),
+        "n_ema_half_life_steps": Int(),
     }),
     "sampling": Map({
         "n_t_steps": Int(),

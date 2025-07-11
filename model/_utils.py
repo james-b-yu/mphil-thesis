@@ -74,3 +74,40 @@ def get_t_embedding(timesteps, embedding_dim, max_positions=10000):
         emb = F.pad(emb, (0, 1), mode='constant')
     assert emb.shape == (timesteps.shape[0], embedding_dim)
     return emb
+
+
+class EMA:
+    @torch.no_grad()
+    def __init__(self, model: torch.nn.Module, ema_model: torch.nn.Module, decay: float | None = None, half_life_steps: float | None = None, ):
+        if (decay is None and half_life_steps is None) or (decay is not None and half_life_steps is not None):
+            raise ValueError(
+                "exactly one of 'decay' and 'half_life_steps' must be specified")
+
+        if decay is not None:
+            self.decay = decay
+            self.one_minus_decay = 1.0 - decay
+        else:
+            assert half_life_steps is not None
+            if half_life_steps <= 0:
+                raise ValueError("half-life must be positive")
+            elif half_life_steps > 1000:
+                self.one_minus_decay = math.log(2) / half_life_steps
+                self.decay = 1.0 - self.one_minus_decay
+            else:
+                self.decay = math.exp(-math.log(2) / half_life_steps)
+                self.one_minus_decay = 1.0 - self.decay
+
+        assert 0.0 <= self.decay <= 1.0
+
+        self._model = model  # reference to original model
+        self._ema_model = ema_model  # reference to the ema model
+
+    @torch.no_grad()
+    def step(self):
+        for ema_param, param in zip(self._ema_model.parameters(), self._model.parameters()):
+            if param.requires_grad:
+                ema_param.copy_(self.decay * ema_param.data +
+                                self.one_minus_decay * param)
+
+    def state_dict(self):
+        return self.state_dict()

@@ -1,7 +1,10 @@
 import os
+from pathlib import Path
 from typing import Any, Literal, Mapping
 import torch
 from tqdm import tqdm
+
+from model import EMA
 from ._noise import Noise
 from ._interp import Interpolate
 from ._sampler import Sampler
@@ -63,6 +66,7 @@ class HilbertStochasticInterpolant:
         self.target_channels = config["target_channels"]
         self.sampler = Sampler(config)
         self.mode = config["mode"]
+        self.n_ema_half_life_steps = config["training"]["n_ema_half_life_steps"]
 
     def train(self):
         wandb_run = wandb_init()
@@ -90,18 +94,39 @@ class HilbertStochasticInterpolant:
 
         model_0 = get_model(self.config)  # forward if direct, EIt if separate
         model_1 = get_model(self.config)  # backward if direct, Ez if separate
+        ema_model_0 = get_model(self.config)
+        ema_model_1 = get_model(self.config)
 
         if self.args.resume is not None:
-            state_dict = torch.load(self.args.resume)
+            model_path = Path(self.args.resume).joinpath("./model.pth")
+            ema_path = Path(self.args.resume).joinpath("./ema.pth")
+            assert model_path.is_file()
+            assert ema_path.is_file()
+
+            state_dict = torch.load(model_path)
+            ema_state_dict = torch.load(ema_path)
+
             model_0.load_state_dict(
                 state_dict["forward" if self.mode == "direct" else "EIt"])
             model_1.load_state_dict(
                 state_dict["backward" if self.mode == "direct" else "Ez"])
+            ema_model_0.load_state_dict(
+                ema_state_dict["forward" if self.mode == "direct" else "EIt"])
+            ema_model_1.load_state_dict(
+                ema_state_dict["backward" if self.mode == "direct" else "Ez"])
+        else:
+            ema_model_0.load_state_dict(model_0.state_dict())
+            ema_model_1.load_state_dict(model_1.state_dict())
 
         model_0 = model_0.to(device=self.device)
         model_1 = model_1.to(device=self.device)
-        # model_0.compile()
-        # model_1.compile()
+        ema_model_0 = ema_model_0.to(device=self.device)
+        ema_model_1 = ema_model_1.to(device=self.device)
+
+        ema_update_0 = EMA(model=model_0, ema_model=ema_model_0,
+                           half_life_steps=self.n_ema_half_life_steps)
+        ema_update_1 = EMA(model=model_1, ema_model=ema_model_1,
+                           half_life_steps=self.n_ema_half_life_steps)
 
         optim_0 = AdamW(model_0.parameters(), amsgrad=True,
                         lr=max_lr)
@@ -182,6 +207,8 @@ class HilbertStochasticInterpolant:
                 )
                 optim_0.step()
                 optim_1.step()
+                ema_update_0.step()
+                ema_update_1.step()
                 scheduler_0.step()
                 scheduler_1.step()
 
@@ -208,23 +235,40 @@ class HilbertStochasticInterpolant:
                     "backward" if self.mode == "direct" else "Ez": model_1.state_dict(),
                 }
 
+                ema_state_dict = {
+                    "forward" if self.mode == "direct" else "EIt": ema_model_0.state_dict(),
+                    "backward" if self.mode == "direct" else "Ez": ema_model_1.state_dict(),
+                }
+
                 _, _, err_forward, err_backward, mse_forward, mse_backward = self.test(
-                    # XXX: fix sampling!
                     state_dict, max_n_samples=None, n_batch_size=self.config["training"]["n_batch"], all_t=False, phase="valid")
+                _, _, ema_err_forward, ema_err_backward, ema_mse_forward, ema_mse_backward = self.test(
+                    ema_state_dict, max_n_samples=None, n_batch_size=self.config["training"]["n_batch"], all_t=False, phase="valid")
 
                 wandb_run.log({
                     "step": step,
+                    "epoch": epoch,
                     "forward_valid_rel_l2_err": err_forward,
                     "backward_valid_rel_l2_err": err_backward,
                     "forward_valid_rel_l2_mse": mse_forward,
                     "backward_valid_rel_l2_mse": mse_backward,
-                    "epoch": epoch
+                    "ema_forward_valid_rel_l2_err": ema_err_forward,
+                    "ema_backward_valid_rel_l2_err": ema_err_backward,
+                    "ema_forward_valid_rel_l2_mse": ema_mse_forward,
+                    "ema_backward_valid_rel_l2_mse": ema_mse_backward,
                 })
 
                 self.logger.info(f"Saving to `{self.args.save_dir}`...")
                 os.makedirs(self.args.save_dir, exist_ok=True)
+
+                torch.save(
+                    state_dict, f"{self.args.save_dir}/model.pth")
+                torch.save(
+                    ema_state_dict, f"{self.args.save_dir}/ema.pth")
                 torch.save(
                     state_dict, f"{self.args.save_dir}/epoch_{epoch}.pth")
+                torch.save(
+                    ema_state_dict, f"{self.args.save_dir}/ema_epoch_{epoch}.pth")
 
     def test(self, state_dict: Mapping[str, Any], max_n_samples: int | None, n_batch_size: int, all_t: bool, phase: Literal["valid", "test"]):
         self.logger.info("testing")
