@@ -12,3 +12,5 @@ tqdm~=4.67
 matplotlib~=3.10
 gdown~=5.2
 datasets~=3.6
+huggingface_hub[cli]
+neuraloperator

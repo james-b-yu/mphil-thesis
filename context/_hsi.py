@@ -81,11 +81,14 @@ class HilbertStochasticInterpolant:
         n_warmup_steps = self.config["training"]["n_warmup_steps"]
         n_cosine_cycle_steps = self.config["training"]["n_cosine_cycle_steps"]
         max_lr = self.config["training"]["lr"]
+        
+        resume_steps = self.args.start_epoch * len(train_loader)
         step = 0
 
         def fractional(x): return x - math.floor(x)
 
-        def lr_function(step: int):
+        def lr_function(step_in: int):
+            step = step_in + resume_steps
             if step >= n_warmup_steps and n_cosine_cycle_steps is not None:
                 return 0.5 * (1 + math.cos(math.pi * fractional((step - n_warmup_steps) / n_cosine_cycle_steps)))
             elif step >= n_warmup_steps:
@@ -228,10 +231,10 @@ class HilbertStochasticInterpolant:
                 scheduler_1.step()
 
                 self.logger.info(
-                    f"step: {step}, lr: {scheduler_0.get_last_lr()[0]:.2e} epoch: {epoch} ({100 * i / len(train_loader):.1f} %) {"forward" if self.mode == "direct" else "EIt"}: {torch.abs(mse_0).item():.2f} {"backward" if self.mode == "direct" else "Ez"}: {torch.abs(mse_1).item():.2f}, data time: {data_time / (i+1):.2f}, secs/step: {avg_time_per_step:.2f}, eta: {timedelta(seconds=eta_time)}"
+                    f"step: {step + resume_steps}, lr: {scheduler_0.get_last_lr()[0]:.2e} epoch: {epoch} ({100 * i / len(train_loader):.1f} %) {"forward" if self.mode == "direct" else "EIt"}: {torch.abs(mse_0).item():.2f} {"backward" if self.mode == "direct" else "Ez"}: {torch.abs(mse_1).item():.2f}, data time: {data_time / (i+1):.2f}, secs/step: {avg_time_per_step:.2f}, eta: {timedelta(seconds=eta_time)}"
                 )
                 wandb_run.log({
-                    "step": step,
+                    "step": step + resume_steps,
                     "lr": scheduler_0.get_last_lr()[0],
                     "forward_loss" if self.mode == "direct" else "EIt_loss": mse_0,
                     "backward_loss" if self.mode == "direct" else "Ez_loss": mse_1,
