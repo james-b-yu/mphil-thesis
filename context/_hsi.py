@@ -404,7 +404,7 @@ class HilbertStochasticInterpolant:
                     X_forward[:, self.source_channels:] - x1[:, self.source_channels:]).square().mean(dim=dims)
                 mse_errs_backward[start_cur:end_cur] = (
                     X_backward[:, :self.source_channels] - x0[:, :self.source_channels]).square().mean(dim=dims)
-            elif self.config["layout"] == "product":
+            elif self.config["layout"] == "same":
                 l2_errs_forward[start_cur:end_cur] = (
                     X_forward - x1).norm(dim=dims, p=2) / x1.norm(dim=dims, p=2)
                 l2_errs_backward[start_cur:end_cur] = (
@@ -414,6 +414,8 @@ class HilbertStochasticInterpolant:
                     X_forward - x1).square().mean(dim=dims)
                 mse_errs_backward[start_cur:end_cur] = (
                     X_backward - x0).square().mean(dim=dims)
+            else:
+                raise ValueError()
 
             start_cur = end_cur
 
