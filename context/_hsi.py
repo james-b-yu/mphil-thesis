@@ -27,6 +27,13 @@ def get_model(config: Config):
         return FNO(config)
     elif config["model"] == "uno_2d":
         assert config["uno_2d"] is not None
+
+        if config["layout"] == "product":
+            n_channels = config["source_channels"] + config["target_channels"]
+        else:
+            assert config["source_channels"] == config["target_channels"]
+            n_channels = config["source_channels"]
+
         return UNO2d(
             img_resolution=config["resolution"],
             attn_resolutions=config["uno_2d"]["attn_resolutions"],
@@ -39,8 +46,8 @@ def get_model(config: Config):
             embedding_type="positional",
             encoder_type="standard",
             fmult=config["uno_2d"]["fmult"],
-            in_channels=config["source_channels"] + config["target_channels"],
-            out_channels=config["source_channels"] + config["target_channels"],
+            in_channels=n_channels,
+            out_channels=n_channels,
             label_dim=0,
             label_dropout=0,
             model_channels=config["uno_2d"]["cbase"],
@@ -74,14 +81,14 @@ class HilbertStochasticInterpolant:
         self.logger.info("training")
 
         train_dataset = get_dataset(
-            self.config["data"]["dataset"], phase="train", target_resolution=self.config["resolution"])
+            self.config["data"]["dataset"], phase="train", target_resolution=self.config["resolution"], layout=self.config["layout"])
         train_loader = DataLoader(
             train_dataset, batch_size=self.config["training"]["n_batch"], shuffle=True, num_workers=self.args.n_dataworkers, prefetch_factor=self.args.n_prefetch_factor)
 
         n_warmup_steps = self.config["training"]["n_warmup_steps"]
         n_cosine_cycle_steps = self.config["training"]["n_cosine_cycle_steps"]
         max_lr = self.config["training"]["lr"]
-        
+
         resume_steps = self.args.start_epoch * len(train_loader)
         step = 0
 
@@ -309,7 +316,7 @@ class HilbertStochasticInterpolant:
             self.config["sampling"]["start_t"], self.config["sampling"]["end_t"], self.config["sampling"]["n_t_steps"])
 
         test_dataset = get_dataset(
-            self.config["data"]["dataset"], phase=phase, target_resolution=self.config["resolution"])
+            self.config["data"]["dataset"], phase=phase, target_resolution=self.config["resolution"], layout=self.config["layout"])
         n_samples = min(max_n_samples, len(test_dataset)
                         ) if max_n_samples is not None else len(test_dataset)
         test_loader = DataLoader(
@@ -359,16 +366,22 @@ class HilbertStochasticInterpolant:
             else:
                 raise ValueError()
 
-            if all_t:
-                res_forward[:, start_cur:end_cur] = X_forward[:,
-                                                              :, self.source_channels:]
-                res_backward[:, start_cur:end_cur] = X_backward[:,
-                                                                :, :self.source_channels]
+            if self.config["layout"] == "product":
+                if all_t:
+                    res_forward[:, start_cur:end_cur] = X_forward[:,
+                                                                  :, self.source_channels:]
+                    res_backward[:, start_cur:end_cur] = X_backward[:,
+                                                                    :, :self.source_channels]
+                else:
+                    res_forward[start_cur:end_cur] = X_forward[:,
+                                                               self.source_channels:]
+                    res_backward[start_cur:end_cur] = X_backward[:,
+                                                                 :self.source_channels]
+            elif self.config["layout"] == "same":
+                res_forward[:, start_cur:end_cur] = X_forward
+                res_backward[:, start_cur:end_cur] = X_backward
             else:
-                res_forward[start_cur:end_cur] = X_forward[:,
-                                                           self.source_channels:]
-                res_backward[start_cur:end_cur] = X_backward[:,
-                                                             :self.source_channels]
+                raise ValueError()
 
             # now perform evaluation
             if all_t:
@@ -377,15 +390,26 @@ class HilbertStochasticInterpolant:
 
             dims = tuple(range(1, 1 + self.dimensions + 1))
 
-            l2_errs_forward[start_cur:end_cur] = (
-                X_forward[:, self.source_channels:] - x1[:, self.source_channels:]).norm(dim=dims, p=2) / x1[:, self.source_channels:].norm(dim=dims, p=2)
-            l2_errs_backward[start_cur:end_cur] = (
-                X_backward[:, :self.source_channels] - x0[:, :self.source_channels]).norm(dim=dims, p=2) / x0[:, :self.source_channels].norm(dim=dims, p=2)
+            if self.config["layout"] == "product":
+                l2_errs_forward[start_cur:end_cur] = (
+                    X_forward[:, self.source_channels:] - x1[:, self.source_channels:]).norm(dim=dims, p=2) / x1[:, self.source_channels:].norm(dim=dims, p=2)
+                l2_errs_backward[start_cur:end_cur] = (
+                    X_backward[:, :self.source_channels] - x0[:, :self.source_channels]).norm(dim=dims, p=2) / x0[:, :self.source_channels].norm(dim=dims, p=2)
 
-            mse_errs_forward[start_cur:end_cur] = (
-                X_forward[:, self.source_channels:] - x1[:, self.source_channels:]).square().mean(dim=dims)
-            mse_errs_backward[start_cur:end_cur] = (
-                X_backward[:, :self.source_channels] - x0[:, :self.source_channels]).square().mean(dim=dims)
+                mse_errs_forward[start_cur:end_cur] = (
+                    X_forward[:, self.source_channels:] - x1[:, self.source_channels:]).square().mean(dim=dims)
+                mse_errs_backward[start_cur:end_cur] = (
+                    X_backward[:, :self.source_channels] - x0[:, :self.source_channels]).square().mean(dim=dims)
+            elif self.config["layout"] == "product":
+                l2_errs_forward[start_cur:end_cur] = (
+                    X_forward - x1).norm(dim=dims, p=2) / x1.norm(dim=dims, p=2)
+                l2_errs_backward[start_cur:end_cur] = (
+                    X_backward - x0).norm(dim=dims, p=2) / x0.norm(dim=dims, p=2)
+
+                mse_errs_forward[start_cur:end_cur] = (
+                    X_forward - x1).square().mean(dim=dims)
+                mse_errs_backward[start_cur:end_cur] = (
+                    X_backward - x0).square().mean(dim=dims)
 
             start_cur = end_cur
 

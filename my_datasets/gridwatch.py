@@ -9,8 +9,11 @@ from ._utils import InstanceStandardize
 
 
 class GridwatchDataset(torch.utils.data.Dataset):
-    def __init__(self, phase: Literal["train", "valid", "test"], train_test_ratio=0.8, seed=87):
+    def __init__(self, phase: Literal["train", "valid", "test"], train_test_ratio=0.8, seed=87, loc="", target_resolution=288, layout="same"):
         super().__init__()
+        assert loc == "./data/gridwatch_clean.csv"
+        assert target_resolution == 288
+        assert layout == "same"
 
         self.phase = phase
         self.scaler = InstanceStandardize()

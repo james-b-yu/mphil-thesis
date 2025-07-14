@@ -255,7 +255,7 @@ def prep_diffusion_pde(logger: Logger, in_prefix: str, out_path: str, ds_name: s
 
 
 class DiffusionPDEDataset(TorchDataset):
-    def __init__(self, ds_name: str, loc: str, phase: Literal["train", "valid", "test"], target_resolution: int):
+    def __init__(self, ds_name: str, loc: str, phase: Literal["train", "valid", "test"], target_resolution: int, layout: Literal["same", "product"]):
         super().__init__()
 
         assert ds_name in METADATA
@@ -281,6 +281,8 @@ class DiffusionPDEDataset(TorchDataset):
 
         self._hf_ds = self._hf_dataset_dict[phase]
 
+        self.layout = layout
+
     def __len__(self):
         return len(self._hf_ds)
 
@@ -292,7 +294,13 @@ class DiffusionPDEDataset(TorchDataset):
         target = torch.as_tensor(row[self._target_name], dtype=torch.float32)[
             ..., ::self._downsample_factor, ::self._downsample_factor]
 
-        x0 = torch.stack((source, torch.zeros_like(target)), dim=0)
-        x1 = torch.stack((torch.zeros_like(source), target), dim=0)
+        if self.layout == "product":
+            x0 = torch.stack((source, torch.zeros_like(target)), dim=0)
+            x1 = torch.stack((torch.zeros_like(source), target), dim=0)
+        elif self.layout == "same":
+            x0 = source
+            x1 = target
+        else:
+            raise ValueError()
 
         return x0, x1

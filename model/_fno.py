@@ -24,10 +24,18 @@ class FNO(nn.Module):
         self.order = len(config["fno"]["n_modes"])
         assert self.order == 1, "FNO does not support functions with >1 input dimension"
         self.n_hidden_channels = config["fno"]["n_hidden_channels"]
-        self.n_in_channels = config["source_channels"] + \
-            config["target_channels"]
-        self.n_out_channels = config["source_channels"] + \
-            config["target_channels"]
+
+        if config["layout"] == "product":
+            self.n_in_channels = config["source_channels"] + \
+                config["target_channels"]
+            self.n_out_channels = config["source_channels"] + \
+                config["target_channels"]
+        elif config["layout"] == "same":
+            assert config["source_channels"] == config["target_channels"]
+            self.n_in_channels = config["source_channels"]
+            self.n_out_channels = config["source_channels"]
+        else:
+            raise ValueError()
         self.n_lifting_channels = config["fno"]["n_lifting_channels"]
         self.n_layers = config["fno"]["n_layers"]
         self.n_projection_channels = config["fno"]["n_projection_channels"]

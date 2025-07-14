@@ -66,6 +66,7 @@ class Config(TypedDict):
     device: str
     data: Data
     mode: Literal["direct", "separate"]
+    layout: Literal["same", "product"]
     # e.g., a dataset where functions are evaluated on a 128x128 grid will have dimensions = 2, resolution=128
     dimensions: int
     resolution: int
@@ -87,6 +88,7 @@ config_schema = Map({
         "dataset": Enum(["gridwatch", "darcy_1d", "darcy", "poisson", "helmholtz", "burger", "ns-nonbounded", "ns-bounded"]),
     }),
     "mode": Enum(["direct", "separate"]),
+    "layout": Enum(["same", "product"]),
     "dimensions": Int(),
     "resolution": Int(),
     "source_channels": Int(),

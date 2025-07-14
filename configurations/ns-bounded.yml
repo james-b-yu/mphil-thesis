@@ -1,12 +1,12 @@
 data:
-  dataset: darcy
+  dataset: ns-bounded
 dimensions: 2
 resolution: 64
 source_channels: 1
 target_channels: 1
 device: cuda
 mode: direct
-layout: product
+layout: same
 model: uno_2d
 uno_2d:
   attn_resolutions:
