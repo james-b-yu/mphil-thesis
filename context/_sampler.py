@@ -88,10 +88,10 @@ class Sampler:
 
             if not backward:
                 drift = model_EIt(xt, theta_input) + interp.get_weight_on_Ez(
-                    theta_input, False)[:, None, None] * model_Ez(xt, theta_input)
+                    theta_input, False)[:, *([None] * (1 + self.config["dimensions"]))] * model_Ez(xt, theta_input)
             else:
                 drift = -model_EIt(xt, 1.0 - theta_input) + interp.get_weight_on_Ez(
-                    1.0 - theta_input, True)[:, None, None] * model_Ez(xt, 1.0 - theta_input)
+                    1.0 - theta_input, True)[:, *([None] * (1 + self.config["dimensions"]))] * model_Ez(xt, 1.0 - theta_input)
 
             diffusion = z * \
                 math.sqrt(2.0 * interp.eps)
