@@ -1,0 +1,43 @@
+data:
+  dataset: ns-bounded
+dimensions: 2
+resolution: 64
+source_channels: 1
+target_channels: 1
+device: cuda
+mode: direct
+layout: same
+model: uno_2d
+uno_2d:
+  attn_resolutions:
+    - 8
+  num_blocks: 4
+  fmult: 0.5
+  rank: 0.1
+  cbase: 64 # model_channels
+  cres: # channel_mult
+    - 1
+    - 2
+    - 4
+    - 4 
+  dropout: 0.13
+interpolate:
+  schedule: lerp
+  b: 0.5
+noise:
+  gain: 1.0
+  len: 1.0
+training:
+  n_epochs: 250 # about 350000 steps
+  n_batch: 96
+  grad_clip: 100000.0
+  lr: 1e-4
+  n_warmup_steps: 170000
+  n_cosine_cycle_steps: null  # don't use cosine schedule
+  n_ema_half_life_steps: 8000
+sampling:
+  n_t_steps: 100
+  start_t: 0
+  end_t: 1
+  c: 1.0
+  use_pc: true
