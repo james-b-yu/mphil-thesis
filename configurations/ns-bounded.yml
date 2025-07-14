@@ -23,13 +23,13 @@ uno_2d:
   dropout: 0.13
 interpolate:
   schedule: lerp
-  b: 0.5
+  b: 0.01
 noise:
   gain: 1.0
   len: 1.0
 training:
   n_epochs: 250 # about 350000 steps
-  n_batch: 48
+  n_batch: 96
   grad_clip: 100000.0
   lr: 1e-4
   n_warmup_steps: 170000

@@ -298,8 +298,8 @@ class DiffusionPDEDataset(TorchDataset):
             x0 = torch.stack((source, torch.zeros_like(target)), dim=0)
             x1 = torch.stack((torch.zeros_like(source), target), dim=0)
         elif self.layout == "same":
-            x0 = source
-            x1 = target
+            x0 = source.unsqueeze(0)
+            x1 = target.unsqueeze(0)
         else:
             raise ValueError()
 
