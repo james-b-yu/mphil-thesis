@@ -378,8 +378,12 @@ class HilbertStochasticInterpolant:
                     res_backward[start_cur:end_cur] = X_backward[:,
                                                                  :self.source_channels]
             elif self.config["layout"] == "same":
-                res_forward[:, start_cur:end_cur] = X_forward
-                res_backward[:, start_cur:end_cur] = X_backward
+                if all_t:
+                    res_forward[:, start_cur:end_cur] = X_forward
+                    res_backward[:, start_cur:end_cur] = X_backward
+                else:
+                    res_forward[start_cur:end_cur] = X_forward
+                    res_backward[start_cur:end_cur] = X_backward
             else:
                 raise ValueError()
 
