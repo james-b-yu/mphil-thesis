@@ -77,7 +77,8 @@ class HilbertStochasticInterpolant:
         self.n_ema_half_life_steps = config["training"]["n_ema_half_life_steps"]
 
     def train(self):
-        wandb_run = wandb_init(name=f"{self.config["data"]["dataset"]};{self.config["mode"]};b={self.config["interpolate"]["b"]};{self.config["interpolate"]["schedule"]};weighted")
+        wandb_run = wandb_init(
+            name=f"{self.config["data"]["dataset"]};{self.config["mode"]};b={self.config["interpolate"]["b"]};{self.config["interpolate"]["schedule"]};weighted;len={self.config["noise"]['len']}")
         self.logger.info("training")
 
         train_dataset = get_dataset(
