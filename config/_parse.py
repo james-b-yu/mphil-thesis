@@ -23,6 +23,8 @@ def parse():
         "--out-file", type=str, required=False, default="./samples.npz", help="output file")
     inference_parser.add_argument(
         "--all-t", type=bool, required=False, default=False, help="whether to preserve all time steps")
+    inference_parser.add_argument("--stats-out", type=str, required=False, default=None,
+                                  help="if specified, output a csv file to this with all the stats")
 
     # define the main parser
     parser = argparse.ArgumentParser(

@@ -268,9 +268,9 @@ class HilbertStochasticInterpolant:
                     "backward" if self.mode == "direct" else "Ez": ema_model_1.state_dict(),
                 }
 
-                _, _, err_forward, err_backward, mse_forward, mse_backward = self.test(
+                _, _, err_forward, err_backward, mse_forward, mse_backward, _ = self.test(
                     state_dict, max_n_samples=256, n_batch_size=self.config["training"]["n_batch"], all_t=False, phase="valid", shuffle=True)
-                _, _, ema_err_forward, ema_err_backward, ema_mse_forward, ema_mse_backward = self.test(
+                _, _, ema_err_forward, ema_err_backward, ema_mse_forward, ema_mse_backward, _ = self.test(
                     ema_state_dict, max_n_samples=256, n_batch_size=self.config["training"]["n_batch"], all_t=False, phase="valid", shuffle=True)
 
                 wandb_run.log({
@@ -299,6 +299,8 @@ class HilbertStochasticInterpolant:
                     ema_state_dict, f"{self.args.save_dir}/ema_epoch_{epoch}.pth")
 
     def test(self, state_dict: Mapping[str, Any], max_n_samples: int | None, n_batch_size: int, all_t: bool, phase: Literal["valid", "test"], shuffle=False):
+        start_timestamp = time()
+
         self.logger.info("testing")
 
         model_0 = get_model(self.config)
@@ -398,8 +400,12 @@ class HilbertStochasticInterpolant:
             if self.config["layout"] == "product":
                 l2_errs_forward[start_cur:end_cur] = (
                     X_forward[:, self.source_channels:] - x1[:, self.source_channels:]).norm(dim=dims, p=2) / x1[:, self.source_channels:].norm(dim=dims, p=2)
-                l2_errs_backward[start_cur:end_cur] = (
-                    X_backward[:, :self.source_channels] - x0[:, :self.source_channels]).norm(dim=dims, p=2) / x0[:, :self.source_channels].norm(dim=dims, p=2)
+                if self.config["data"]["dataset"] == "darcy":
+                    l2_errs_backward[start_cur:end_cur] = (~((X_backward[:, :self.source_channels] >= 0) == (
+                        x0[:, :self.source_channels] >= 0))).to(dtype=torch.float32).mean(dim=dims)
+                else:
+                    l2_errs_backward[start_cur:end_cur] = (
+                        X_backward[:, :self.source_channels] - x0[:, :self.source_channels]).norm(dim=dims, p=2) / x0[:, :self.source_channels].norm(dim=dims, p=2)
 
                 mse_errs_forward[start_cur:end_cur] = (
                     X_forward[:, self.source_channels:] - x1[:, self.source_channels:]).square().mean(dim=dims)
@@ -425,7 +431,10 @@ class HilbertStochasticInterpolant:
         mse_err_forward = float(mse_errs_forward.mean())
         mse_err_backward = float(mse_errs_backward.mean())
 
-        return res_forward, res_backward, l2_err_forward, l2_err_backward, mse_err_forward, mse_err_backward
+        duration_seconds = time() - start_timestamp
+        s_per_sample = duration_seconds / (2.0 * n_samples)
+
+        return res_forward, res_backward, l2_err_forward, l2_err_backward, mse_err_forward, mse_err_backward, s_per_sample
 
     def test_one(self, state_dict, n_id, n_repeats, all_t):
         raise NotImplementedError()
