@@ -211,11 +211,14 @@ class HilbertStochasticInterpolant:
                            ["n_epochs"] + 1):
             data_start = time()
             data_time = 0
+            model_0.train()
+            model_1.train()
+
+            if self.mode == "conditional":
+                model_2.train()
+                model_3.train()
 
             for i, (x0, x1) in enumerate(train_loader):
-                model_0.train()
-                model_1.train()
-
                 step += 1
                 x0 = x0.to(self.device, dtype=torch.float32).squeeze(-1)
                 x1 = x1.to(self.device, dtype=torch.float32).squeeze(-1)

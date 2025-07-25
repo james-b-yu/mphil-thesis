@@ -1,5 +1,5 @@
 data:
-  dataset: ns-bounded
+  dataset: ns-nonbounded
 dimensions: 2
 resolution: 64
 source_channels: 1
@@ -30,7 +30,7 @@ noise:
   len: 1.0
 training:
   n_epochs: 250 # about 350000 steps
-  n_batch: 96
+  n_batch: 48
   grad_clip: 100000.0
   lr: 1e-4
   n_warmup_steps: 170000
