@@ -64,7 +64,7 @@ class Sampler:
         return res if all_t else x
 
     @torch.no_grad()
-    def sample_separate(self, start: torch.Tensor, model_EIt: nn.Module, model_Ez: nn.Module, noise: Noise, interp: Interpolate, times: torch.Tensor, all_t: bool, backward: bool = False):
+    def sample_separate(self, start: torch.Tensor, model_EIt: nn.Module, model_Ez: nn.Module, noise: Noise, interp: Interpolate, times: torch.Tensor, all_t: bool, backward: bool = False, conditional: bool = False):
         """Euler-Maruyama sampling
 
         Args:
@@ -86,12 +86,19 @@ class Sampler:
             theta_input = torch.full(
                 (xt.shape[0], ), fill_value=theta, device=x.device)
 
-            if not backward:
-                drift = model_EIt(xt, theta_input) + interp.get_weight_on_Ez(
-                    theta_input, False)[:, *([None] * (1 + self.config["dimensions"]))] * model_Ez(xt, theta_input)
+            if not conditional:
+                model_input = xt
             else:
-                drift = -model_EIt(xt, 1.0 - theta_input) + interp.get_weight_on_Ez(
-                    1.0 - theta_input, True)[:, *([None] * (1 + self.config["dimensions"]))] * model_Ez(xt, 1.0 - theta_input)
+                cond_start = (start[:, :self.config["source_channels"]
+                                    ] if not backward else start[:, self.config["source_channels"]:]) if self.config["layout"] == "product" else start
+                model_input = torch.concat((xt, cond_start), dim=1)
+
+            if not backward:
+                drift = model_EIt(model_input, theta_input) + interp.get_weight_on_Ez(
+                    theta_input, False)[:, *([None] * (1 + self.config["dimensions"]))] * model_Ez(model_input, theta_input)
+            else:
+                drift = -model_EIt(model_input, 1.0 - theta_input) + interp.get_weight_on_Ez(
+                    1.0 - theta_input, True)[:, *([None] * (1 + self.config["dimensions"]))] * model_Ez(model_input, 1.0 - theta_input)
 
             diffusion = z * \
                 math.sqrt(2.0 * interp.eps)

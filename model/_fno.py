@@ -16,7 +16,7 @@ def _ddpm_init(m: nn.Module):
 
 
 class FNO(nn.Module):
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, input_source: bool):
         super().__init__()
         assert config["fno"] is not None
         self.config = config
@@ -25,14 +25,19 @@ class FNO(nn.Module):
         assert self.order == 1, "FNO does not support functions with >1 input dimension"
         self.n_hidden_channels = config["fno"]["n_hidden_channels"]
 
+        n_extra_in_channels = 0
+        if config["mode"] == "conditional":
+            n_extra_in_channels = config["source_channels"] if input_source else config["target_channels"]
+
         if config["layout"] == "product":
             self.n_in_channels = config["source_channels"] + \
-                config["target_channels"]
+                config["target_channels"] + n_extra_in_channels
             self.n_out_channels = config["source_channels"] + \
                 config["target_channels"]
         elif config["layout"] == "same":
             assert config["source_channels"] == config["target_channels"]
-            self.n_in_channels = config["source_channels"]
+            self.n_in_channels = config["source_channels"] + \
+                n_extra_in_channels
             self.n_out_channels = config["source_channels"]
         else:
             raise ValueError()

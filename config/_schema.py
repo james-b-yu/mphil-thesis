@@ -32,6 +32,7 @@ class Noise(TypedDict):
 class Interpolate(TypedDict):
     b: float
     schedule: Literal["lerp", "smoothstep"]
+    weighting: Literal["none", "exponential-out"]
 
 
 class FNO(TypedDict):
@@ -65,7 +66,7 @@ class UNO2d(TypedDict):
 class Config(TypedDict):
     device: str
     data: Data
-    mode: Literal["direct", "separate"]
+    mode: Literal["direct", "separate", "conditional"]
     layout: Literal["same", "product"]
     # e.g., a dataset where functions are evaluated on a 128x128 grid will have dimensions = 2, resolution=128
     dimensions: int
@@ -87,7 +88,7 @@ config_schema = Map({
     "data": Map({
         "dataset": Enum(["gridwatch", "darcy_1d", "darcy", "poisson", "helmholtz", "burger", "ns-nonbounded", "ns-bounded"]),
     }),
-    "mode": Enum(["direct", "separate"]),
+    "mode": Enum(["direct", "separate", "conditional"]),
     "layout": Enum(["same", "product"]),
     "dimensions": Int(),
     "resolution": Int(),
@@ -96,6 +97,7 @@ config_schema = Map({
     "interpolate": Map({
         "b": Float(),
         "schedule": Enum(["lerp", "smoothstep"]),
+        "weighting": Enum(["none", "exponential-out"])
     }),
     "training": Map({
         "n_batch": Int(),

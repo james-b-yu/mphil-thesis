@@ -13,15 +13,26 @@ class Interpolate:
         self.eps = self.b / 2.0
         # TODO: enable other schedules
 
-        def w(t: float | np.ndarray, _: np.ndarray | None = None):
-            if isinstance(t, np.ndarray):
-                res = np.zeros_like(t)
-                res[t < 1.0] = np.exp(-((1.0 - t[t < 1.0]) ** (-self.c)))
-                return res
-            elif isinstance(t, float):
-                return np.exp(-((1.0 - t) ** (-self.c))) if t < 1.0 else 0.0
-            else:
-                raise ValueError()
+        if config["interpolate"]["weighting"] == "exponential-out":
+            def w(t: float | np.ndarray, _: np.ndarray | None = None):
+                if isinstance(t, np.ndarray):
+                    res = np.zeros_like(t)
+                    res[t < 1.0] = np.exp(-((1.0 - t[t < 1.0]) ** (-self.c)))
+                    return res
+                elif isinstance(t, float):
+                    return np.exp(-((1.0 - t) ** (-self.c))) if t < 1.0 else 0.0
+                else:
+                    raise ValueError()
+        elif config["interpolate"]["weighting"] == "none":
+            def w(t: float | np.ndarray, _: np.ndarray | None = None):
+                if isinstance(t, np.ndarray):
+                    return np.full_like(t, fill_value=1.0)
+                elif isinstance(t, float):
+                    return 1.0
+                else:
+                    raise ValueError()
+        else:
+            raise ValueError()
 
         # set up time change
         theta_unscaled = solve_ivp(fun=w, t_span=(0, 1), y0=np.array(

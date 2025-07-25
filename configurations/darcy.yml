@@ -5,7 +5,7 @@ resolution: 64
 source_channels: 1
 target_channels: 1
 device: cuda
-mode: direct
+mode: conditional
 layout: product
 model: uno_2d
 uno_2d:
@@ -23,6 +23,7 @@ uno_2d:
   dropout: 0.13
 interpolate:
   schedule: lerp
+  weighting: exponential-out
   b: 0.5
 noise:
   gain: 1.0

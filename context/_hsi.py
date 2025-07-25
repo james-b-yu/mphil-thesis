@@ -22,9 +22,9 @@ from wandb import init as wandb_init
 import math
 
 
-def get_model(config: Config):
+def get_model(config: Config, is_forward: bool):
     if config["model"] == "fno":
-        return FNO(config)
+        return FNO(config, is_forward)
     elif config["model"] == "uno_2d":
         assert config["uno_2d"] is not None
 
@@ -33,6 +33,10 @@ def get_model(config: Config):
         else:
             assert config["source_channels"] == config["target_channels"]
             n_channels = config["source_channels"]
+
+        n_extra_in_channels = 0
+        if config["mode"] == "conditional":
+            n_extra_in_channels = config["source_channels"] if is_forward else config["target_channels"]
 
         return UNO2d(
             img_resolution=config["resolution"],
@@ -46,7 +50,7 @@ def get_model(config: Config):
             embedding_type="positional",
             encoder_type="standard",
             fmult=config["uno_2d"]["fmult"],
-            in_channels=n_channels,
+            in_channels=n_channels + n_extra_in_channels,
             out_channels=n_channels,
             label_dim=0,
             label_dropout=0,
@@ -104,10 +108,17 @@ class HilbertStochasticInterpolant:
             else:
                 return (step / n_warmup_steps)
 
-        model_0 = get_model(self.config)  # forward if direct, EIt if separate
-        model_1 = get_model(self.config)  # backward if direct, Ez if separate
-        ema_model_0 = get_model(self.config)
-        ema_model_1 = get_model(self.config)
+        # forward if direct, EIt if separate
+        model_0 = get_model(self.config, is_forward=True)
+        # backward if direct, Ez if separate
+        model_1 = get_model(self.config, is_forward=True)
+        ema_model_0 = get_model(self.config, is_forward=True)
+        ema_model_1 = get_model(self.config, is_forward=True)
+        if self.config["mode"] == "conditional":
+            model_2 = get_model(self.config, is_forward=False)
+            model_3 = get_model(self.config, is_forward=False)
+            ema_model_2 = get_model(self.config, is_forward=False)
+            ema_model_3 = get_model(self.config, is_forward=False)
 
         if self.args.resume is not None:
             model_path = Path(self.args.resume).joinpath("./model.pth")
@@ -118,17 +129,37 @@ class HilbertStochasticInterpolant:
             state_dict = torch.load(model_path)
             ema_state_dict = torch.load(ema_path)
 
-            model_0.load_state_dict(
-                state_dict["forward" if self.mode == "direct" else "EIt"])
-            model_1.load_state_dict(
-                state_dict["backward" if self.mode == "direct" else "Ez"])
-            ema_model_0.load_state_dict(
-                ema_state_dict["forward" if self.mode == "direct" else "EIt"])
-            ema_model_1.load_state_dict(
-                ema_state_dict["backward" if self.mode == "direct" else "Ez"])
+            if self.mode == "direct":
+                raise NotImplementedError()
+                model_0.load_state_dict(state_dict["forward"])
+                model_1.load_state_dict(state_dict["backward"])
+
+                ema_model_0.load_state_dict(ema_state_dict["forward"])
+                ema_model_1.load_state_dict(ema_state_dict["backward"])
+            elif self.mode == "separate":
+                model_0.load_state_dict(state_dict["EIt"])
+                model_1.load_state_dict(state_dict["Ez"])
+
+                ema_model_0.load_state_dict(ema_state_dict["EIt"])
+                ema_model_1.load_state_dict(ema_state_dict["Ez"])
+            elif self.mode == "conditional":
+                model_0.load_state_dict(state_dict["EIt_forward"])
+                model_1.load_state_dict(state_dict["Ez_forward"])
+                model_2.load_state_dict(state_dict["EIt_backward"])
+                model_3.load_state_dict(state_dict["Ez_backward"])
+
+                ema_model_0.load_state_dict(ema_state_dict["EIt_forward"])
+                ema_model_1.load_state_dict(ema_state_dict["Ez_forward"])
+                ema_model_2.load_state_dict(ema_state_dict["EIt_backward"])
+                ema_model_3.load_state_dict(ema_state_dict["Ez_backward"])
+            else:
+                raise ValueError()
         else:
             ema_model_0.load_state_dict(model_0.state_dict())
             ema_model_1.load_state_dict(model_1.state_dict())
+            if self.config["mode"] == "conditional":
+                ema_model_2.load_state_dict(model_2.state_dict())
+                ema_model_3.load_state_dict(model_3.state_dict())
 
         model_0 = model_0.to(device=self.device)
         model_1 = model_1.to(device=self.device)
@@ -147,6 +178,23 @@ class HilbertStochasticInterpolant:
 
         scheduler_0 = LambdaLR(optim_0, lr_function)
         scheduler_1 = LambdaLR(optim_1, lr_function)
+
+        if self.config["mode"] == "conditional":
+            model_2 = model_2.to(device=self.device)
+            model_3 = model_3.to(device=self.device)
+            ema_model_2 = ema_model_2.to(device=self.device)
+            ema_model_3 = ema_model_3.to(device=self.device)
+
+            ema_update_2 = EMA(model=model_2, ema_model=ema_model_2,
+                               half_life_steps=self.n_ema_half_life_steps)
+            ema_update_3 = EMA(model=model_3, ema_model=ema_model_3,
+                               half_life_steps=self.n_ema_half_life_steps)
+
+            optim_2 = AdamW(model_2.parameters(), amsgrad=True, lr=max_lr)
+            optim_3 = AdamW(model_3.parameters(), amsgrad=True, lr=max_lr)
+
+            scheduler_2 = LambdaLR(optim_2, lr_function)
+            scheduler_3 = LambdaLR(optim_3, lr_function)
 
         total_steps = (self.config["training"]["n_epochs"] +
                        1 - self.args.start_epoch) * len(train_loader)
@@ -192,81 +240,201 @@ class HilbertStochasticInterpolant:
                     target_1 = self.interpolate.get_target_backward_drift(
                         theta, x0, x1, z) * theta_t[:, *([None] * (1 + self.dimensions))]
                 elif self.mode == "separate":
-                    xt_0 = xt_1 = self.interpolate(t, x0, x1, z)
+                    cond_in_0 = cond_in_1 = xt_0 = xt_1 = self.interpolate(
+                        t, x0, x1, z)
 
                     target_0 = self.interpolate.get_target_EIt(t, x0, x1, z)
                     target_1 = self.interpolate.get_target_Ez(t, x0, x1, z)
+                elif self.mode == "conditional":
+                    xt_0 = xt_1 = xt_2 = xt_3 = self.interpolate(t, x0, x1, z)
+
+                    target_0 = target_2 = self.interpolate.get_target_EIt(
+                        t, x0, x1, z)
+                    target_1 = target_3 = self.interpolate.get_target_Ez(
+                        t, x0, x1, z)
+
+                    cond_in_0 = cond_in_1 = torch.concat(
+                        (xt_0, x0[:, :self.source_channels] if self.config["layout"] == "product" else x0), dim=1)
+                    cond_in_2 = cond_in_3 = torch.concat(
+                        (xt_1, x1[:, self.source_channels:] if self.config["layout"] == "product" else x1), dim=1)
                 else:
                     raise ValueError()
 
                 dims = tuple(range(1, 1 + self.dimensions + 1))
 
-                pred_0 = model_0(xt_0, t)
-                pred_1 = model_1(xt_1, t)
-
+                pred_0 = model_0(cond_in_0, t)
                 mse_0 = (target_0 -
                          # TODO: accommodate 2D etc
                          pred_0).square().sum(dim=dims).mean(dim=0)
-                mse_1 = (target_1 -
-                         # TODO: accommodate 2D etc
-                         pred_1).square().sum(dim=dims).mean(dim=0)
-
-                if torch.isnan(mse_0) or torch.isnan(mse_1):
+                if torch.isnan(mse_0):
                     self.logger.warning("encountered NAN loss. skipping")
                     continue
-
-                # optim
-
                 optim_0.zero_grad()
-                optim_1.zero_grad()
-
                 mse_0.backward()
-                mse_1.backward()
-
                 norm_0 = torch.nn.utils.clip_grad_norm_(
                     model_0.parameters(
                     ), self.config["training"]["grad_clip"]
                 )
+                optim_0.step()
+                optim_0.zero_grad()
+
+                pred_1 = model_1(cond_in_1, t)
+                mse_1 = (target_1 -
+                         # TODO: accommodate 2D etc
+                         pred_1).square().sum(dim=dims).mean(dim=0)
+                if torch.isnan(mse_1):
+                    self.logger.warning("encountered NAN loss. skipping")
+                    continue
+                optim_1.zero_grad()
+                mse_1.backward()
                 norm_1 = torch.nn.utils.clip_grad_norm_(
                     model_1.parameters(
                     ), self.config["training"]["grad_clip"]
                 )
-                optim_0.step()
                 optim_1.step()
+                optim_1.zero_grad()
+
                 ema_update_0.step()
                 ema_update_1.step()
                 scheduler_0.step()
                 scheduler_1.step()
 
+                if self.mode == "conditional":
+                    pred_2 = model_2(cond_in_2, t)
+                    mse_2 = (target_2 -
+                             pred_2).square().sum(dim=dims).mean(dim=0)
+                    if torch.isnan(mse_2):
+                        self.logger.warning("encountered NAN loss. skipping")
+                        continue
+                    optim_2.zero_grad()
+                    mse_2.backward()
+                    norm_2 = torch.nn.utils.clip_grad_norm_(
+                        model_2.parameters(
+                        ), self.config["training"]["grad_clip"]
+                    )
+                    optim_2.step()
+                    optim_2.zero_grad()
+
+                    pred_3 = model_3(cond_in_3, t)
+                    mse_3 = (target_3 -
+                             pred_3).square().sum(dim=dims).mean(dim=0)
+                    if torch.isnan(mse_3):
+                        self.logger.warning("encountered NAN loss. skipping")
+                        continue
+                    optim_3.zero_grad()
+                    mse_3.backward()
+                    norm_3 = torch.nn.utils.clip_grad_norm_(
+                        model_3.parameters(
+                        ), self.config["training"]["grad_clip"]
+                    )
+                    optim_3.step()
+                    optim_3.zero_grad()
+
+                    ema_update_2.step()
+                    ema_update_3.step()
+                    scheduler_2.step()
+                    scheduler_3.step()
+
                 self.logger.info(
-                    f"step: {step + resume_steps}, lr: {scheduler_0.get_last_lr()[0]:.2e} epoch: {epoch} ({100 * i / len(train_loader):.1f} %) {"forward" if self.mode == "direct" else "EIt"}: {torch.abs(mse_0).item():.2f} {"backward" if self.mode == "direct" else "Ez"}: {torch.abs(mse_1).item():.2f}, data time: {data_time / (i+1):.2f}, secs/step: {avg_time_per_step:.2f}, eta: {timedelta(seconds=eta_time)}"
+                    f"step: {step + resume_steps}, lr: {scheduler_0.get_last_lr()[0]:.2e} epoch: {epoch} ({100 * i / len(train_loader):.1f} %), data time: {data_time / (i+1):.2f}, secs/step: {avg_time_per_step:.2f}, eta: {timedelta(seconds=eta_time)}"
                 )
-                wandb_run.log({
-                    "step": step + resume_steps,
-                    "lr": scheduler_0.get_last_lr()[0],
-                    "forward_loss" if self.mode == "direct" else "EIt_loss": mse_0,
-                    "backward_loss" if self.mode == "direct" else "Ez_loss": mse_1,
-                    "forward_gradnorm" if self.mode == "direct" else "EIt_gradnorm": norm_0,
-                    "backward_gradnorm" if self.mode == "direct" else "Ez_gradnorm": norm_1,
-                    "epoch": epoch,
-                    "eta_seconds": eta_time,
-                    "seconds_per_step": avg_time_per_step,
-                })
+
+                if self.mode == "direct":
+                    wandb_run.log({
+                        "step": step + resume_steps,
+                        "lr": scheduler_0.get_last_lr()[0],
+                        "forward_loss": mse_0,
+                        "backward_loss": mse_1,
+                        "forward_gradnorm": norm_0,
+                        "backward_gradnorm": norm_1,
+                        "epoch": epoch,
+                        "eta_seconds": eta_time,
+                        "seconds_per_step": avg_time_per_step,
+                    })
+                elif self.mode == "separate":
+                    wandb_run.log({
+                        "step": step + resume_steps,
+                        "lr": scheduler_0.get_last_lr()[0],
+                        "EIt_loss": mse_0,
+                        "Ez_loss": mse_1,
+                        "EIt_gradnorm": norm_0,
+                        "Ez_gradnorm": norm_1,
+                        "epoch": epoch,
+                        "eta_seconds": eta_time,
+                        "seconds_per_step": avg_time_per_step,
+                    })
+                elif self.mode == "conditional":
+                    wandb_run.log({
+                        "step": step + resume_steps,
+                        "lr": scheduler_0.get_last_lr()[0],
+                        "EIt_forward_loss": mse_0,
+                        "Ez_forward_loss": mse_1,
+                        "EIt_forward_gradnorm": norm_0,
+                        "Ez_forward_gradnorm": norm_1,
+                        "EIt_backward_loss": mse_2,
+                        "Ez_backward_loss": mse_3,
+                        "EIt_backward_gradnorm": norm_2,
+                        "Ez_backward_gradnorm": norm_3,
+                        "epoch": epoch,
+                        "eta_seconds": eta_time,
+                        "seconds_per_step": avg_time_per_step,
+                    })
+                else:
+                    raise ValueError()
 
                 data_start = time()
 
             if self.args.save_every is not None and epoch % self.args.save_every == 0 and epoch > 1:
                 self.logger.info(f"Evaluating...")
 
-                state_dict = {
-                    "forward" if self.mode == "direct" else "EIt": model_0.state_dict(),
-                    "backward" if self.mode == "direct" else "Ez": model_1.state_dict(),
-                }
+                if self.mode == "direct":
+                    state_dict = {
+                        "forward": model_0.state_dict(),
+                        "backward": model_1.state_dict(),
+                    }
 
-                ema_state_dict = {
-                    "forward" if self.mode == "direct" else "EIt": ema_model_0.state_dict(),
-                    "backward" if self.mode == "direct" else "Ez": ema_model_1.state_dict(),
-                }
+                    ema_state_dict = {
+                        "forward": ema_model_0.state_dict(),
+                        "backward": ema_model_1.state_dict(),
+                    }
+                elif self.mode == "separate":
+                    state_dict = {
+                        "EIt": model_0.state_dict(),
+                        "Ez": model_1.state_dict(),
+                    }
+
+                    ema_state_dict = {
+                        "EIt": ema_model_0.state_dict(),
+                        "Ez": ema_model_1.state_dict(),
+                    }
+                elif self.mode == "conditional":
+                    state_dict = {
+                        "EIt_forward": model_0.state_dict(),
+                        "Ez_forward": model_1.state_dict(),
+                        "EIt_backward": model_2.state_dict(),
+                        "Ez_backward": model_3.state_dict(),
+                    }
+
+                    ema_state_dict = {
+                        "EIt_forward": ema_model_0.state_dict(),
+                        "Ez_forward": ema_model_1.state_dict(),
+                        "EIt_backward": ema_model_2.state_dict(),
+                        "Ez_backward": ema_model_3.state_dict(),
+                    }
+                else:
+                    raise ValueError()
+
+                self.logger.info(f"Saving to `{self.args.save_dir}`...")
+                os.makedirs(self.args.save_dir, exist_ok=True)
+
+                torch.save(
+                    state_dict, f"{self.args.save_dir}/model.pth")
+                torch.save(
+                    ema_state_dict, f"{self.args.save_dir}/ema.pth")
+                torch.save(
+                    state_dict, f"{self.args.save_dir}/epoch_{epoch}.pth")
+                torch.save(
+                    ema_state_dict, f"{self.args.save_dir}/ema_epoch_{epoch}.pth")
 
                 _, _, err_forward, err_backward, mse_forward, mse_backward, _ = self.test(
                     state_dict, max_n_samples=256, n_batch_size=self.config["training"]["n_batch"], all_t=False, phase="valid", shuffle=True)
@@ -286,34 +454,47 @@ class HilbertStochasticInterpolant:
                     "ema_backward_valid_rel_l2_mse": ema_mse_backward,
                 })
 
-                self.logger.info(f"Saving to `{self.args.save_dir}`...")
-                os.makedirs(self.args.save_dir, exist_ok=True)
-
-                torch.save(
-                    state_dict, f"{self.args.save_dir}/model.pth")
-                torch.save(
-                    ema_state_dict, f"{self.args.save_dir}/ema.pth")
-                torch.save(
-                    state_dict, f"{self.args.save_dir}/epoch_{epoch}.pth")
-                torch.save(
-                    ema_state_dict, f"{self.args.save_dir}/ema_epoch_{epoch}.pth")
-
     def test(self, state_dict: Mapping[str, Any], max_n_samples: int | None, n_batch_size: int, all_t: bool, phase: Literal["valid", "test"], shuffle=False):
         start_timestamp = time()
 
         self.logger.info("testing")
 
-        model_0 = get_model(self.config)
-        model_0.load_state_dict(
-            state_dict["forward" if self.mode == "direct" else "EIt"])
-        model_0 = model_0.to(device=self.device)
-        model_0.eval()
+        if self.mode != "conditional":
+            model_0 = get_model(self.config, is_forward=True)
+            model_0.load_state_dict(
+                state_dict["forward" if self.mode == "direct" else "EIt"])
+            model_0 = model_0.to(device=self.device)
+            model_0.eval()
 
-        model_1 = get_model(self.config)
-        model_1.load_state_dict(
-            state_dict["backward" if self.mode == "direct" else "Ez"])
-        model_1 = model_1.to(device=self.device)
-        model_1.eval()
+            model_1 = get_model(self.config, is_forward=True)
+            model_1.load_state_dict(
+                state_dict["backward" if self.mode == "direct" else "Ez"])
+            model_1 = model_1.to(device=self.device)
+            model_1.eval()
+        else:
+            model_0 = get_model(self.config, is_forward=True)
+            model_0.load_state_dict(
+                state_dict["EIt_forward"])
+            model_0 = model_0.to(device=self.device)
+            model_0.eval()
+
+            model_1 = get_model(self.config, is_forward=True)
+            model_1.load_state_dict(
+                state_dict["Ez_forward"])
+            model_1 = model_1.to(device=self.device)
+            model_1.eval()
+
+            model_2 = get_model(self.config, is_forward=False)
+            model_2.load_state_dict(
+                state_dict["EIt_backward"])
+            model_2 = model_2.to(device=self.device)
+            model_2.eval()
+
+            model_3 = get_model(self.config, is_forward=False)
+            model_3.load_state_dict(
+                state_dict["Ez_backward"])
+            model_3 = model_3.to(device=self.device)
+            model_3.eval()
 
         times = torch.linspace(
             self.config["sampling"]["start_t"], self.config["sampling"]["end_t"], self.config["sampling"]["n_t_steps"])
@@ -361,11 +542,15 @@ class HilbertStochasticInterpolant:
                     x0, model_0, self.noise, self.interpolate, times, all_t)
                 X_backward = self.sampler.sample_direct(
                     x1, model_1, self.noise, self.interpolate, times, all_t)
-            elif self.mode == "separate":
+            elif self.mode == "separate" or self.mode == "conditional":
                 X_forward = self.sampler.sample_separate(
-                    x0, model_0, model_1, self.noise, self.interpolate, times, all_t, backward=False)
-                X_backward = self.sampler.sample_separate(
-                    x1, model_0, model_1, self.noise, self.interpolate, times, all_t, backward=True)
+                    x0, model_0, model_1, self.noise, self.interpolate, times, all_t, backward=False, conditional=self.mode == "conditional")
+                if self.mode == "conditional":
+                    X_backward = self.sampler.sample_separate(
+                        x1, model_2, model_3, self.noise, self.interpolate, times, all_t, backward=True, conditional=True)
+                else:
+                    X_backward = self.sampler.sample_separate(
+                        x1, model_0, model_1, self.noise, self.interpolate, times, all_t, backward=True, conditional=False)
             else:
                 raise ValueError()
 

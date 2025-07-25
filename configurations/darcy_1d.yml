@@ -5,7 +5,8 @@ resolution: 128
 source_channels: 1
 target_channels: 1
 device: cuda
-mode: direct
+mode: separate
+layout: product
 model: fno
 fno:
   n_lifting_channels: 256
@@ -26,6 +27,7 @@ fno:
 interpolate:
   schedule: lerp
   b: 0.01
+  weighting: exponential-out
 noise:
   gain: 1.0
   len: 1.0
