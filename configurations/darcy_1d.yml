@@ -5,7 +5,7 @@ resolution: 128
 source_channels: 1
 target_channels: 1
 device: cuda
-mode: separate
+mode: conditional
 layout: product
 model: fno
 fno:

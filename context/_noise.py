@@ -27,6 +27,7 @@ class Noise:
 
         # gram matrix K
         K_chol = np.linalg.cholesky(K + np.eye(self.total_points) * 1e-8)
+        self.K = K
 
         self.L = torch.from_numpy(K_chol).to(
             device=config["device"], dtype=torch.float32)
