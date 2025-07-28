@@ -116,11 +116,11 @@ def parse():
 
         config = cast(Config, config.data)
         
-        if args.weighting is not None:
+        if hasattr(args, "weighting") and args.weighting is not None:
             config["interpolate"]["weighting"] = args.weighting
             print(f"Overriding weighting to {config["interpolate"]["weighting"]}")
             
-        if args.n_steps is not None:
+        if hasattr(args, "n_steps") and args.n_steps is not None:
             config["sampling"]["n_t_steps"] = args.n_steps
             print(f"Overriding number of steps to {config["sampling"]["n_t_steps"]}")
 
