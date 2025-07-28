@@ -23,6 +23,26 @@ class Interpolate:
                     return np.exp(-((1.0 - t) ** (-self.c))) if t < 1.0 else 0.0
                 else:
                     raise ValueError()
+        elif config["interpolate"]["weighting"] == "exponential-in":
+            def w(t: float | np.ndarray, _: np.ndarray | None = None):
+                if isinstance(t, np.ndarray):
+                    res = np.zeros_like(t)
+                    res[t > 0.0] = np.exp(-((t[t > 0.0]) ** (-self.c)))
+                    return res
+                elif isinstance(t, float):
+                    return np.exp(-((t) ** (-self.c))) if t > 0.0 else 0.0
+                else:
+                    raise ValueError()
+        elif config["interpolate"]["weighting"] == "exponential-in-out":
+            def w(t: float | np.ndarray, _: np.ndarray | None = None):
+                if isinstance(t, np.ndarray):
+                    res = np.zeros_like(t)
+                    res[(t > 0.0) & (t < 1.0)] = np.exp(-((((1.0 - t) * t)[(t > 0.0) & (t < 1.0)]) ** (-self.c)))
+                    return res
+                elif isinstance(t, float):
+                    return np.exp(-(((1.0 - t) * t) ** (-self.c))) if (t > 0.0 and t < 1.0) else 0.0
+                else:
+                    raise ValueError()
         elif config["interpolate"]["weighting"] == "none":
             def w(t: float | np.ndarray, _: np.ndarray | None = None):
                 if isinstance(t, np.ndarray):
@@ -31,6 +51,15 @@ class Interpolate:
                     return 1.0
                 else:
                     raise ValueError()
+        elif config["interpolate"]["weighting"] == "linear-in":
+            def w(t: float | np.ndarray, _: np.ndarray | None = None):
+                return t
+        elif config["interpolate"]["weighting"] == "linear-out":
+            def w(t: float | np.ndarray, _: np.ndarray | None = None):
+                return 1.0 - t
+        elif config["interpolate"]["weighting"] == "linear-in-out":
+            def w(t: float | np.ndarray, _: np.ndarray | None = None):
+                return t * (1.0 - t)
         else:
             raise ValueError()
 

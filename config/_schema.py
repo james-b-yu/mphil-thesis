@@ -32,7 +32,7 @@ class Noise(TypedDict):
 class Interpolate(TypedDict):
     b: float
     schedule: Literal["lerp", "smoothstep"]
-    weighting: Literal["none", "exponential-out"]
+    weighting: Literal["none", "exponential-out", "exponential-in", "exponential-in-out", "linear-in", "linear-out", "linear-in-out"]
 
 
 class FNO(TypedDict):
@@ -97,7 +97,7 @@ config_schema = Map({
     "interpolate": Map({
         "b": Float(),
         "schedule": Enum(["lerp", "smoothstep"]),
-        "weighting": Enum(["none", "exponential-out"])
+        "weighting": Enum(["none", "exponential-out", "exponential-in", "exponential-in-out", "linear-in", "linear-out", "linear-in-out"])
     }),
     "training": Map({
         "n_batch": Int(),
