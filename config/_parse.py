@@ -25,6 +25,9 @@ def parse():
         "--all-t", type=bool, required=False, default=False, help="whether to preserve all time steps")
     inference_parser.add_argument("--stats-out", type=str, required=False, default=None,
                                   help="if specified, output a csv file to this with all the stats")
+    
+    inference_parser.add_argument("--weighting", type=str, required=False, default=None, help="if specified, override the weighting",)
+    inference_parser.add_argument("--n-steps", type=int, required=False, default=None, help="if specified, override the number of time steps")
 
     # define the main parser
     parser = argparse.ArgumentParser(
@@ -112,5 +115,9 @@ def parse():
         assert isinstance(config, strictyaml.YAML), "Invalid YAML"
 
         config = cast(Config, config.data)
+        
+        if args.weighting is not None:
+            config["interpolate"]["weighting"] = args.weighting
+            print(f"Overriding weighting to {config["interpolate"]["weighting"]}")
 
     return args, config
