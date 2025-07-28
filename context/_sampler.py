@@ -84,7 +84,7 @@ class Sampler:
         def get_elements(s: float, xt: torch.Tensor, z: torch.Tensor):
             theta = interp.theta(s).item()
             theta_input = torch.full(
-                (xt.shape[0], ), fill_value=theta, device=x.device)
+                (xt.shape[0], ), fill_value=theta, device=x.device).clamp(min=0.0, max=1.0)
 
             if not conditional:
                 model_input = xt

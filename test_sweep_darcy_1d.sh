@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Define the list of weighting methods to loop through
-weighting_methods=("none" "exponential-out" "exponential-in" "exponential-in-out", "linear-in", "linear-out", "linear-in-out")
+weighting_methods=("exponential-in" "exponential-in-out" "linear-in" "linear-out" "linear-in-out")
 
 # Outer loop for weighting methods
 for weighting in "${weighting_methods[@]}"
