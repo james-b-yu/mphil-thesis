@@ -4,3 +4,10 @@ wandb/
 *.part
 data/
 *.zip
+machine.file.*
+slurm*.out
+logs/
+jobs/
+configurations/
+container.def
+container.sif

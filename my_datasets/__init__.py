@@ -10,7 +10,7 @@ def get_dataset(dataset_name: str, *args, **kwargs):
     elif dataset_name == "darcy_1d":
         return Darcy1dDataset(loc="./data/darcy_1d", *args, **kwargs)
     elif dataset_name in METADATA:
-        return DiffusionPDEDataset(ds_name=dataset_name, loc=f"./data/{dataset_name}", *args, **kwargs)
+        return DiffusionPDEDataset(ds_name=dataset_name, loc=f"/ramdisks/{dataset_name}", *args, **kwargs)
     raise ValueError()
 
 
