@@ -1,12 +1,10 @@
-# python==3.12
-
 pandas~=2.2
-numpy~=2.2
+numpy~=1.26  # Pinned to the last stable 1.x version to ensure compatibility
 strictyaml~=1.7
 torch~=2.7
 tensorly-torch~=0.5
 tensorly~=0.9
-packaging~=25.0
+packaging~=24.0
 opt-einsum~=3.4
 tqdm~=4.67
 matplotlib~=3.10

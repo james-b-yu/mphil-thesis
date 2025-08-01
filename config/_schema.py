@@ -32,7 +32,8 @@ class Noise(TypedDict):
 class Interpolate(TypedDict):
     b: float
     schedule: Literal["lerp", "smoothstep"]
-    weighting: Literal["none", "exponential-out", "exponential-in", "exponential-in-out", "linear-in", "linear-out", "linear-in-out"]
+    weighting: Literal["none", "exponential-out", "exponential-in",
+                       "exponential-in-out", "linear-in", "linear-out", "linear-in-out"]
 
 
 class FNO(TypedDict):
@@ -63,6 +64,12 @@ class UNO2d(TypedDict):
     dropout: float
 
 
+class UNet2d(TypedDict):
+    widths: list[int]
+    n_layers_per_block: int
+    dropout: float
+
+
 class Config(TypedDict):
     device: str
     data: Data
@@ -77,9 +84,10 @@ class Config(TypedDict):
     interpolate: Interpolate
     training: Training
     sampling: Sampling
-    model: Literal["fno", "uno_2d"]
+    model: Literal["fno", "uno_2d", "unet_2d"]
     fno: FNO | None
     uno_2d: UNO2d | None
+    unet_2d: UNet2d | None
     noise: Noise
 
 
@@ -115,7 +123,7 @@ config_schema = Map({
         "c": Float(),
         "use_pc": Bool(),
     }),
-    "model": Enum(["fno", "uno_2d"]),
+    "model": Enum(["fno", "uno_2d", "unet_2d"]),
     Optional("fno", default=None): Map({
         "n_lifting_channels": Int(),
         "n_hidden_channels": Int(),
@@ -139,6 +147,11 @@ config_schema = Map({
         "rank": Float(),
         "cbase": Int(),
         "cres": Seq(Int()),
+        "dropout": Float(),
+    }),
+    Optional("unet_2d", default=None): Map({
+        "widths": Seq(Int()),
+        "n_layers_per_block": Int(),
         "dropout": Float(),
     }),
     "noise": Map({

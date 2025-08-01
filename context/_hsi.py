@@ -4,7 +4,6 @@ from typing import Any, Literal, Mapping
 import torch
 from tqdm import tqdm
 
-from model import EMA
 from ._noise import Noise
 from ._interp import Interpolate
 from ._sampler import Sampler
@@ -12,7 +11,7 @@ from config import Config
 from argparse import Namespace
 from logging import Logger
 from my_datasets import get_dataset
-from model import FNO, UNO2d
+from model import FNO, UNO2d, UNet2d, EMA
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
@@ -58,6 +57,31 @@ def get_model(config: Config, is_forward: bool):
             num_blocks=config["uno_2d"]["num_blocks"],
             rank=config["uno_2d"]["rank"],
             resample_filter=[1, 1],
+        )
+    elif config["model"] == "unet_2d":
+        assert config["unet_2d"] is not None
+
+        if config["layout"] == "product":
+            n_channels = config["source_channels"] + config["target_channels"]
+        else:
+            assert config["source_channels"] == config["target_channels"]
+            n_channels = config["source_channels"]
+
+        n_extra_in_channels = 0
+        if config["mode"] == "conditional":
+            n_extra_in_channels = config["source_channels"] if is_forward else config["target_channels"]
+
+        assert len(config["unet_2d"]["widths"]) == 4
+
+        return UNet2d(
+            sample_size=config["resolution"],
+            in_channels=n_channels + n_extra_in_channels,
+            out_channels=n_channels,
+            layers_per_block=config["unet_2d"]["n_layers_per_block"],
+            block_out_channels=tuple(
+                # type:ignore
+                w * config["resolution"] for w in config["unet_2d"]["widths"]),
+            dropout=config["unet_2d"]["dropout"],
         )
     else:
         raise ValueError()

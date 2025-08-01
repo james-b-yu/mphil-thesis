@@ -30,7 +30,7 @@ noise:
   len: 0.05
 training:
   n_epochs: 250 # about 350000 steps
-  n_batch: 200
+  n_batch: 32
   grad_clip: 100000.0
   lr: 5e-5
   n_warmup_steps: 17000

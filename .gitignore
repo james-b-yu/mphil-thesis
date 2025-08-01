@@ -11,3 +11,4 @@ jobs/
 configurations/
 container.def
 container.sif
+*.sif
