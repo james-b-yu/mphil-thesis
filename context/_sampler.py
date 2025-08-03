@@ -113,18 +113,24 @@ class Sampler:
 
             z = noise.sample(x.shape[:2])
 
-            drift, diffusion = get_elements(s.item(), x, z)
-            drift, diffusion = drift * theta_t, diffusion * (theta_t ** 0.5)
-
-            x_orig = x
-            x = x_orig + drift * ds + diffusion * (ds ** 0.5)
-
             if self.use_pc and s + ds < times[-1]:
-                drift_tick, diffusion_tick = get_elements(s.item() + ds, x, z)
-                drift_tick, diffusion_tick = drift_tick * \
-                    theta_t, diffusion_tick * (theta_t ** 0.5)
-                x = x_orig + 0.5 * (drift + drift_tick) * ds + \
-                    0.5 * (diffusion + diffusion_tick) * (ds ** 0.5)
+                x_orig = x
+
+                x_hat = x_orig + z * math.sqrt(2.0 * interp.eps * theta_t * ds)
+                drift, _ = get_elements(s.item() + ds, x_hat, z)
+                theta_t_next = interp.theta_t(s + ds).item()
+
+                x_p = x_hat + drift * theta_t_next * ds
+                drift_tick, _ = get_elements(s.item() + ds, x_p, z)
+
+                x = x_hat + 0.5 * (drift + drift_tick) * theta_t_next * ds
+            else:
+                drift, diffusion = get_elements(s.item(), x, z)
+                drift, diffusion = drift * \
+                    theta_t, diffusion * (theta_t ** 0.5)
+
+                x_orig = x
+                x = x_orig + drift * ds + diffusion * (ds ** 0.5)
 
             if all_t:
                 res[i] = x
