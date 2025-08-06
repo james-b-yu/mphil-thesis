@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # Define the list of len methods to loop through
-lens=("0005" "001" "002" "005" "010" "020" "050")
+# lens=("0005" "001" "002" "005" "010" "020" "050")
+lens=("100")
 
 # Outer loop for len methods
 for len in "${lens[@]}"
@@ -12,7 +13,7 @@ do
      echo "==> Running test with len: ${len}, run: ${i}"
      ./run.py test \
          --config=./configurations/sweep_darcy_1d/${len}.yml \
-         --pth=./out_darcy_1d_${len}/ema_epoch_1500.pth \
+         --pth=./out_darcy_1d_${len}/ema_epoch_2000.pth \
          --n-steps=100 \
          --n-batch-size=1500 \
          --out-file=./test_sweep_darcy_1d/final_sweep-${len}-${i}_epoch_1500.npz \
