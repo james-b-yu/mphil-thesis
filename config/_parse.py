@@ -28,6 +28,7 @@ def parse():
     
     inference_parser.add_argument("--weighting", type=str, required=False, default=None, help="if specified, override the weighting",)
     inference_parser.add_argument("--n-steps", type=int, required=False, default=None, help="if specified, override the number of time steps")
+    inference_parser.add_argument("--method", type=str, required=False, default=None, help="if specified, override the sampling method")
 
     # define the main parser
     parser = argparse.ArgumentParser(
@@ -123,5 +124,9 @@ def parse():
         if hasattr(args, "n_steps") and args.n_steps is not None:
             config["sampling"]["n_t_steps"] = args.n_steps
             print(f"Overriding number of steps to {config["sampling"]["n_t_steps"]}")
+            
+        if hasattr(args, "method") and args.method is not None:
+            config["sampling"]["method"] = args.method
+            print(f"Overriding sampling method to {config["sampling"]["method"]}")
 
     return args, config

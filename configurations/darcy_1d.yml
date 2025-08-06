@@ -44,7 +44,7 @@ sampling:
   start_t: 0.0
   end_t: 1.0
   c: 1.0
-  use_pc: true  # whether to use predictor-corrector
+  method: "em_2"  # whether to use predictor-corrector
 
 # means: tensor([3.8022e-04, 5.6180e-05])
 # stds: tensor([1.0008, 0.1469])

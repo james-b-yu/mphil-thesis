@@ -11,7 +11,7 @@ from torch import nn
 class Sampler:
     def __init__(self, config: Config):
         self.config = config
-        self.use_pc = config["sampling"]["use_pc"]
+        self.method = config["sampling"]["method"]
 
     @torch.no_grad()
     def sample_known(self, x: torch.Tensor, x0: torch.Tensor, x1: torch.Tensor, interp: Interpolate, noise: Noise, times: torch.Tensor):
@@ -25,43 +25,7 @@ class Sampler:
         Args:
             model (nn.Module): _description_
         """
-
-        # model provides the drift coefficients
-        assert times.dim() == 1 and len(times) > 1
-
-        x = start
-
-        dt = 0
-
-        if all_t:
-            res = torch.zeros(size=(len(times), *x.shape), device=x.device)
-
-        for i, t in enumerate(tqdm(times, leave=False)):
-            if i + 1 < len(times):
-                dt = (times[i + 1] - times[i]).item()  # allow for dynamic dt
-
-            t = t.item()
-
-            t_input = torch.full((x.shape[0], ), fill_value=t, device=x.device)
-
-            z = noise.sample(x.shape[:2])
-
-            drift = model(x, t_input)
-
-            diffusion = z * \
-                math.sqrt(2.0 * interp.eps * dt)
-
-            x_orig = x
-            x = x_orig + drift * dt + diffusion  # Euler-Maruyama step
-
-            if self.use_pc and t + dt < times[-1]:
-                drift_tick = model(x, t_input + dt)
-                x = x_orig + 0.5 * (drift + drift_tick) * dt + diffusion
-
-            if all_t:
-                res[i] = x
-
-        return res if all_t else x
+        raise NotImplementedError
 
     @torch.no_grad()
     def sample_separate(self, start: torch.Tensor, model_EIt: nn.Module, model_Ez: nn.Module, noise: Noise, interp: Interpolate, times: torch.Tensor, all_t: bool, backward: bool = False, conditional: bool = False):
@@ -113,7 +77,7 @@ class Sampler:
 
             z = noise.sample(x.shape[:2])
 
-            if self.use_pc and s + ds < times[-1]:
+            if self.method == "heun" and s + ds < times[-1]:
                 x_orig = x
 
                 x_hat = x_orig + z * math.sqrt(2.0 * interp.eps * theta_t * ds)
@@ -124,15 +88,21 @@ class Sampler:
                 drift_tick, _ = get_elements(s.item() + ds, x_p, z)
 
                 x = x_hat + 0.5 * (drift + drift_tick) * theta_t_next * ds
-            else:
+            else:                
                 drift, diffusion = get_elements(s.item(), x, z)
-                drift, diffusion = drift * \
-                    theta_t, diffusion * (theta_t ** 0.5)
+                drift, diffusion = drift * theta_t, diffusion * (theta_t ** 0.5)
 
                 x_orig = x
                 x = x_orig + drift * ds + diffusion * (ds ** 0.5)
 
-            if all_t:
-                res[i] = x
+                if self.method == "em_2" and s + ds < times[-1]:
+                    drift_tick, diffusion_tick = get_elements(s.item() + ds, x, z)
+                    drift_tick, diffusion_tick = drift_tick * \
+                        theta_t, diffusion_tick * (theta_t ** 0.5)
+                    x = x_orig + 0.5 * (drift + drift_tick) * ds + \
+                        0.5 * (diffusion + diffusion_tick) * (ds ** 0.5)
+
+                if all_t:
+                    res[i] = x
 
         return res if all_t else x

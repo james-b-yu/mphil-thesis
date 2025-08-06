@@ -41,4 +41,4 @@ sampling:
   start_t: 0
   end_t: 1
   c: 1.0
-  use_pc: true
+  method: "em_2"

@@ -17,6 +17,7 @@ do
          --n-batch-size=1000 \
          --out-file=./test_sweep_darcy_1d/final_sweep-${len}-${i}.npz \
          --stats-out=./test_sweep_darcy_1d/final_sweep-${len}-${i}.csv \
-         --weighting=linear-out
+         --weighting=linear-out \
+         --method=em_2
   done
 done
