@@ -12,3 +12,5 @@ configurations/
 container.def
 container.sif
 *.sif
+inference*/
+test_sweep_darcy_1d*/
