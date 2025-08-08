@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Define the list of len methods to loop through
-# lens=("0005" "001" "002" "005" "010" "020" "050")
-lens=("100")
+lens=("0005" "001" "002" "005" "010" "020" "050" "100")
+# lens=("100")
 
 # Outer loop for len methods
 for len in "${lens[@]}"
@@ -13,11 +13,11 @@ do
      echo "==> Running test with len: ${len}, run: ${i}"
      ./run.py test \
          --config=./configurations/sweep_darcy_1d/${len}.yml \
-         --pth=./out_darcy_1d_${len}/ema_epoch_2000.pth \
+         --pth=./out_darcy_1d_${len}/epoch_1500.pth \
          --n-steps=100 \
-         --n-batch-size=1500 \
-         --out-file=./test_sweep_darcy_1d/final_sweep-${len}-${i}_epoch_1500.npz \
-         --stats-out=./test_sweep_darcy_1d/final_sweep-${len}-${i}_epoch_1500.csv \
+         --n-batch-size=1000 \
+         --out-file=./test_sweep_darcy_1d/final_sweep-${len}-${i}_epoch_1000_model.npz \
+         --stats-out=./test_sweep_darcy_1d/final_sweep-${len}-${i}_epoch_1000_model.csv \
          --weighting=linear-out \
          --method=em_2
   done

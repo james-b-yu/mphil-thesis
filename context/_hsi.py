@@ -648,5 +648,181 @@ class HilbertStochasticInterpolant:
 
         return res_forward, res_backward, l2_err_forward, l2_err_backward, mse_err_forward, mse_err_backward, s_per_sample
 
-    def test_one(self, state_dict, n_id, n_repeats, all_t):
-        raise NotImplementedError()
+    def test_one(self, state_dict: Mapping[str, Any], n_samples: int, n_id: int, n_batch_size: int, all_t: bool, phase: Literal["valid", "test"]):
+        """
+        Tests the model by generating a single specified example multiple times.
+
+        Args:
+            state_dict: Dictionary containing the model state dictionaries.
+            n_samples: The number of times to generate the single example.
+            n_id: The index of the example in the dataset to test.
+            n_batch_size: The batch size to use for generation.
+            all_t: Whether to return the full time trajectory.
+            phase: The dataset phase to use ('valid' or 'test').
+
+        Returns:
+            A tuple containing generated samples, error metrics, and performance info.
+        """
+        start_timestamp = time()
+        self.logger.info(f"Testing example {n_id} for {n_samples} samples.")
+
+        if self.mode != "conditional":
+            model_0 = get_model(self.config, is_forward=True)
+            model_0.load_state_dict(
+                state_dict["forward" if self.mode == "direct" else "EIt"])
+            model_0 = model_0.to(device=self.device)
+            model_0.eval()
+
+            model_1 = get_model(self.config, is_forward=True)
+            model_1.load_state_dict(
+                state_dict["backward" if self.mode == "direct" else "Ez"])
+            model_1 = model_1.to(device=self.device)
+            model_1.eval()
+        else:
+            model_0 = get_model(self.config, is_forward=True)
+            model_0.load_state_dict(state_dict["EIt_forward"])
+            model_0 = model_0.to(device=self.device)
+            model_0.eval()
+
+            model_1 = get_model(self.config, is_forward=True)
+            model_1.load_state_dict(state_dict["Ez_forward"])
+            model_1 = model_1.to(device=self.device)
+            model_1.eval()
+
+            model_2 = get_model(self.config, is_forward=False)
+            model_2.load_state_dict(state_dict["EIt_backward"])
+            model_2 = model_2.to(device=self.device)
+            model_2.eval()
+
+            model_3 = get_model(self.config, is_forward=False)
+            model_3.load_state_dict(state_dict["Ez_backward"])
+            model_3 = model_3.to(device=self.device)
+            model_3.eval()
+
+        times = torch.linspace(
+            self.config["sampling"]["start_t"], self.config["sampling"]["end_t"], self.config["sampling"]["n_t_steps"])
+
+        test_dataset = get_dataset(
+            self.config["data"]["dataset"], phase=phase, target_resolution=self.config["resolution"], layout=self.config["layout"])
+
+        if n_id >= len(test_dataset):
+            raise IndexError(
+                f"n_id {n_id} is out of bounds for dataset with length {len(test_dataset)}")
+
+        x0_single, x1_single = test_dataset[n_id]
+
+        x0_single = x0_single.unsqueeze(0).to(
+            device=self.device, dtype=torch.float32)
+        x1_single = x1_single.unsqueeze(0).to(
+            device=self.device, dtype=torch.float32)
+
+        resoln_dims = ([self.resolution] * self.dimensions)
+        res_forward = torch.zeros(size=(len(times), n_samples, self.target_channels, *resoln_dims)
+                                  if all_t else (n_samples, self.target_channels, *resoln_dims))
+        res_backward = torch.zeros(size=(
+            len(times), n_samples, self.source_channels, *resoln_dims) if all_t else (n_samples, self.source_channels, *resoln_dims))
+
+        l2_errs_forward = torch.zeros(
+            size=(n_samples,), dtype=torch.float32, device=self.device)
+        l2_errs_backward = torch.zeros(
+            size=(n_samples,), dtype=torch.float32, device=self.device)
+        mse_errs_forward = torch.zeros(
+            size=(n_samples,), dtype=torch.float32, device=self.device)
+        mse_errs_backward = torch.zeros(
+            size=(n_samples,), dtype=torch.float32, device=self.device)
+
+        start_cur = 0
+        with tqdm(total=n_samples, desc=f"Generating sample {n_id}") as pbar:
+            while start_cur < n_samples:
+                # Determine the size of the current batch
+                current_batch_size = min(n_batch_size, n_samples - start_cur)
+                end_cur = start_cur + current_batch_size
+
+                # Create a batch by repeating the single sample
+                # This is efficient as it avoids moving the same data to the GPU repeatedly
+                x0 = x0_single.expand(
+                    current_batch_size, -1, *([-1]*self.dimensions))
+                x1 = x1_single.expand(
+                    current_batch_size, -1, *([-1]*self.dimensions))
+
+                # --- Sampling ---
+                # This logic is identical to the test function
+                if self.mode == "direct":
+                    X_forward = self.sampler.sample_direct(
+                        x0, model_0, self.noise, self.interpolate, times, all_t)
+                    X_backward = self.sampler.sample_direct(
+                        x1, model_1, self.noise, self.interpolate, times, all_t)
+                elif self.mode == "separate" or self.mode == "conditional":
+                    X_forward = self.sampler.sample_separate(
+                        x0, model_0, model_1, self.noise, self.interpolate, times, all_t, backward=False, conditional=self.mode == "conditional")
+                    if self.mode == "conditional":
+                        X_backward = self.sampler.sample_separate(
+                            x1, model_2, model_3, self.noise, self.interpolate, times, all_t, backward=True, conditional=True)
+                    else:
+                        X_backward = self.sampler.sample_separate(
+                            x1, model_0, model_1, self.noise, self.interpolate, times, all_t, backward=True, conditional=False)
+                else:
+                    raise ValueError()
+
+                if self.config["layout"] == "product":
+                    if all_t:
+                        res_forward[:, start_cur:end_cur] = X_forward[:,
+                                                                      :, self.source_channels:]
+                        res_backward[:, start_cur:end_cur] = X_backward[:,
+                                                                        :, :self.source_channels]
+                    else:
+                        res_forward[start_cur:end_cur] = X_forward[:,
+                                                                   self.source_channels:]
+                        res_backward[start_cur:end_cur] = X_backward[:,
+                                                                     :self.source_channels]
+                elif self.config["layout"] == "same":
+                    if all_t:
+                        res_forward[:, start_cur:end_cur] = X_forward
+                        res_backward[:, start_cur:end_cur] = X_backward
+                    else:
+                        res_forward[start_cur:end_cur] = X_forward
+                        res_backward[start_cur:end_cur] = X_backward
+                else:
+                    raise ValueError()
+
+                X_forward_eval = X_forward[-1] if all_t else X_forward
+                X_backward_eval = X_backward[-1] if all_t else X_backward
+                dims = tuple(range(1, 1 + self.dimensions + 1))
+
+                if self.config["layout"] == "product":
+                    l2_errs_forward[start_cur:end_cur] = (X_forward_eval[:, self.source_channels:] - x1[:, self.source_channels:]).norm(
+                        dim=dims, p=2) / x1[:, self.source_channels:].norm(dim=dims, p=2)
+                    if self.config["data"]["dataset"] == "darcy":
+                        l2_errs_backward[start_cur:end_cur] = (~((X_backward_eval[:, :self.source_channels] >= 0) == (
+                            x0[:, :self.source_channels] >= 0))).to(dtype=torch.float32).mean(dim=dims)
+                    else:
+                        l2_errs_backward[start_cur:end_cur] = (X_backward_eval[:, :self.source_channels] - x0[:, :self.source_channels]).norm(
+                            dim=dims, p=2) / x0[:, :self.source_channels].norm(dim=dims, p=2)
+                    mse_errs_forward[start_cur:end_cur] = (
+                        X_forward_eval[:, self.source_channels:] - x1[:, self.source_channels:]).square().mean(dim=dims)
+                    mse_errs_backward[start_cur:end_cur] = (
+                        X_backward_eval[:, :self.source_channels] - x0[:, :self.source_channels]).square().mean(dim=dims)
+                elif self.config["layout"] == "same":
+                    l2_errs_forward[start_cur:end_cur] = (
+                        X_forward_eval - x1).norm(dim=dims, p=2) / x1.norm(dim=dims, p=2)
+                    l2_errs_backward[start_cur:end_cur] = (
+                        X_backward_eval - x0).norm(dim=dims, p=2) / x0.norm(dim=dims, p=2)
+                    mse_errs_forward[start_cur:end_cur] = (
+                        X_forward_eval - x1).square().mean(dim=dims)
+                    mse_errs_backward[start_cur:end_cur] = (
+                        X_backward_eval - x0).square().mean(dim=dims)
+                else:
+                    raise ValueError()
+
+                start_cur = end_cur
+                pbar.update(current_batch_size)
+
+        l2_err_forward = float(l2_errs_forward.mean())
+        l2_err_backward = float(l2_errs_backward.mean())
+        mse_err_forward = float(mse_errs_forward.mean())
+        mse_err_backward = float(mse_errs_backward.mean())
+
+        duration_seconds = time() - start_timestamp
+        s_per_sample = duration_seconds / (2.0 * n_samples)
+
+        return res_forward, res_backward, l2_err_forward, l2_err_backward, mse_err_forward, mse_err_backward, s_per_sample

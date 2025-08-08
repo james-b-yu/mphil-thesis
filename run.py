@@ -75,6 +75,41 @@ def main():
                                  out_path=args.dest, ds_name=args.dataset_name, seed=args.seed)
     elif args.command == "sample":
         raise NotImplementedError()
+    elif args.command == "test_one":
+        assert config is not None
+        context = HilbertStochasticInterpolant(args, config, logger)
+
+        state_dict = torch.load(args.pth)
+
+        res_forward, res_backward, err_forward, err_backward, mse_forward, mse_backward, s_per_sample = context.test_one(
+            state_dict, args.n_samples, args.n_id, args.n_batch_size, args.all_t, phase="test")
+
+        res_forward = res_forward.numpy()
+        res_backward = res_backward.numpy()
+
+        print(f"Results for sample id {args.n_id} over {args.n_samples} runs:")
+        print(
+            f"Relative L2 Error. Forward: {100 * err_forward:.2f} %. Backward: {100 * err_backward:.2f} %. s per sample: {s_per_sample:.2f}s")
+        print(
+            f"MSE Error. Forward: {mse_forward:.2e}. Backward: {mse_backward:.2e}")
+        print(f"Saving to `{args.out_file}`...")
+        np.savez_compressed(
+            args.out_file, forward=res_forward, backward=res_backward)
+
+        if args.stats_out is not None:
+            print(f"Saving stats to `{args.stats_out}`...")
+            df = pd.DataFrame([{
+                "name": f"{config['data']['dataset']}b={config['interpolate']['b']}len={config['noise']['len']}",
+                "forward_err": err_forward,
+                "inverse_err": err_backward,
+                "forward_mse": mse_forward,
+                "inverse_mse": mse_backward,
+                "s_per_sample": s_per_sample,
+                "n_id": args.n_id,
+                "n_samples": args.n_samples,
+            }])
+
+            df.to_csv(args.stats_out, index=False)
 
 
 if __name__ == "__main__":

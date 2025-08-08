@@ -25,10 +25,13 @@ def parse():
         "--all-t", type=bool, required=False, default=False, help="whether to preserve all time steps")
     inference_parser.add_argument("--stats-out", type=str, required=False, default=None,
                                   help="if specified, output a csv file to this with all the stats")
-    
-    inference_parser.add_argument("--weighting", type=str, required=False, default=None, help="if specified, override the weighting",)
-    inference_parser.add_argument("--n-steps", type=int, required=False, default=None, help="if specified, override the number of time steps")
-    inference_parser.add_argument("--method", type=str, required=False, default=None, help="if specified, override the sampling method")
+
+    inference_parser.add_argument("--weighting", type=str, required=False,
+                                  default=None, help="if specified, override the weighting",)
+    inference_parser.add_argument("--n-steps", type=int, required=False,
+                                  default=None, help="if specified, override the number of time steps")
+    inference_parser.add_argument("--method", type=str, required=False,
+                                  default=None, help="if specified, override the sampling method")
 
     # define the main parser
     parser = argparse.ArgumentParser(
@@ -63,8 +66,8 @@ def parse():
 
     test_one_parser = subparsers.add_parser(
         name="test_one", help="evaluate one test example", parents=[pipeline_parser, inference_parser])
-    test_one_parser.add_argument("--n-repeats", type=int)
-    test_one_parser.add_argument("--n-id", type=int)
+    test_one_parser.add_argument("--n-samples", type=int)
+    test_one_parser.add_argument("--n-id", type=int, required=True)
 
     diagnose_parser = subparsers.add_parser(name="diagnose", help="", parents=[
                                             pipeline_parser, inference_parser])
@@ -116,17 +119,20 @@ def parse():
         assert isinstance(config, strictyaml.YAML), "Invalid YAML"
 
         config = cast(Config, config.data)
-        
+
         if hasattr(args, "weighting") and args.weighting is not None:
             config["interpolate"]["weighting"] = args.weighting
-            print(f"Overriding weighting to {config["interpolate"]["weighting"]}")
-            
+            print(
+                f"Overriding weighting to {config["interpolate"]["weighting"]}")
+
         if hasattr(args, "n_steps") and args.n_steps is not None:
             config["sampling"]["n_t_steps"] = args.n_steps
-            print(f"Overriding number of steps to {config["sampling"]["n_t_steps"]}")
-            
+            print(
+                f"Overriding number of steps to {config["sampling"]["n_t_steps"]}")
+
         if hasattr(args, "method") and args.method is not None:
             config["sampling"]["method"] = args.method
-            print(f"Overriding sampling method to {config["sampling"]["method"]}")
+            print(
+                f"Overriding sampling method to {config["sampling"]["method"]}")
 
     return args, config
