@@ -190,7 +190,7 @@ class Darcy1dDataset(torch.utils.data.Dataset):
         #     size=self.resolution)
 
         perm = self.permeability[idx]
-        soln = 12.0 * self.solutions[idx]
+        soln = self.solutions[idx]
 
         perm = (perm - self.means[0]) / self.stds[0]
         soln = (soln - self.means[1]) / self.stds[1]
