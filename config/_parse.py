@@ -32,6 +32,9 @@ def parse():
                                   default=None, help="if specified, override the number of time steps")
     inference_parser.add_argument("--method", type=str, required=False,
                                   default=None, help="if specified, override the sampling method")
+    inference_parser.add_argument(
+        "--ode", required=False, action="store_true")
+    inference_parser.add_argument("--one", required=False, action="store_true")
 
     # define the main parser
     parser = argparse.ArgumentParser(

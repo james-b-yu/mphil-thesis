@@ -37,7 +37,8 @@ class Interpolate:
             def w(t: float | np.ndarray, _: np.ndarray | None = None):
                 if isinstance(t, np.ndarray):
                     res = np.zeros_like(t)
-                    res[(t > 0.0) & (t < 1.0)] = np.exp(-((((1.0 - t) * t)[(t > 0.0) & (t < 1.0)]) ** (-self.c)))
+                    res[(t > 0.0) & (t < 1.0)] = np.exp(-((((1.0 - t) * t)
+                                                           [(t > 0.0) & (t < 1.0)]) ** (-self.c)))
                     return res
                 elif isinstance(t, float):
                     return np.exp(-(((1.0 - t) * t) ** (-self.c))) if (t > 0.0 and t < 1.0) else 0.0
@@ -128,24 +129,38 @@ class Interpolate:
     def get_target_Ez(self, t: torch.Tensor, x0: torch.Tensor, x1: torch.Tensor, z: torch.Tensor):
         return z
 
-    def get_weight_on_Ez(self, t: torch.Tensor, backward: bool):
-        # note: this assumes that eps = b/2. by using closed-form, we avoid numerical error which was SIGNIFICANTLY degrading samples!
-
+    def get_weight_on_Ez(self, t: torch.Tensor, backward: bool, ode: bool = False):
         res = torch.zeros_like(t)
-
         Q = 1e3
 
-        # cutoff ensures that all items in res are less in magnitude than Q, for numerical stability
-        if not backward:
-            cutoff = (Q ** 2) / (self.b + Q ** 2)
-            res[t < cutoff] = - \
-                (((self.b * t[t < cutoff]) / (1.0 - t[t < cutoff])) ** 0.5)
-            res[t >= cutoff] = -1e3
+        if not ode:
+            # note: this assumes that eps = b/2. by using closed-form, we avoid numerical error which was SIGNIFICANTLY degrading samples!
+            # cutoff ensures that all items in res are less in magnitude than Q, for numerical stability
+            if not backward:
+                cutoff = (Q ** 2) / (self.b + Q ** 2)
+                res[t < cutoff] = - \
+                    (((self.b * t[t < cutoff]) / (1.0 - t[t < cutoff])) ** 0.5)
+                res[t >= cutoff] = -Q
+            else:
+                cutoff = 1.0 - (Q ** 2) / (self.b + Q ** 2)
+                res[t > cutoff] = - \
+                    (((self.b * (1.0 - t[t > cutoff])) / t[t > cutoff]) ** 0.5)
+                res[t <= cutoff] = -Q
         else:
-            cutoff = 1.0 - (Q ** 2) / (self.b + Q ** 2)
-            res[t > cutoff] = - \
-                (((self.b * (1.0 - t[t > cutoff])) / t[t > cutoff]) ** 0.5)
-            res[t <= cutoff] = -1e3
+            # now eps = 0.0. the weight on Ez is the same in both instances
+            cutoff_l = 0.5 * (1.0 - Q / ((self.b + Q ** 2) ** 0.5))
+            cutoff_r = 0.5 * (1.0 + Q / ((self.b + Q ** 2) ** 0.5))
+            res[t <= cutoff_l] = Q
+            res[cutoff_r <= t] = -Q
+
+            middle_mask = (cutoff_l < t) & (t < cutoff_r)
+            t_middle = t[middle_mask]
+            numerator = self.b**0.5 * (1.0 - 2.0 * t_middle)
+            denominator = 2.0 * (t_middle * (1.0 - t_middle))**0.5
+            res[middle_mask] = numerator / denominator
+
+            if backward:
+                res = -res
 
         return res
 

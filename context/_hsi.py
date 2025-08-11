@@ -481,7 +481,7 @@ class HilbertStochasticInterpolant:
                     "ema_backward_valid_rel_l2_mse": ema_mse_backward,
                 })
 
-    def test(self, state_dict: Mapping[str, Any], max_n_samples: int | None, n_batch_size: int, all_t: bool, phase: Literal["valid", "test"], shuffle=False):
+    def test(self, state_dict: Mapping[str, Any], max_n_samples: int | None, n_batch_size: int, all_t: bool, phase: Literal["valid", "test"], shuffle=False, ode=False, one=False):
         start_timestamp = time()
 
         self.logger.info("testing")
@@ -565,19 +565,16 @@ class HilbertStochasticInterpolant:
             x1 = x1.to(device=self.device, dtype=torch.float32)
 
             if self.mode == "direct":
-                X_forward = self.sampler.sample_direct(
-                    x0, model_0, self.noise, self.interpolate, times, all_t)
-                X_backward = self.sampler.sample_direct(
-                    x1, model_1, self.noise, self.interpolate, times, all_t)
+                raise NotImplementedError()
             elif self.mode == "separate" or self.mode == "conditional":
                 X_forward = self.sampler.sample_separate(
-                    x0, model_0, model_1, self.noise, self.interpolate, times, all_t, backward=False, conditional=self.mode == "conditional")
+                    x0, model_0, model_1, self.noise, self.interpolate, times, all_t, backward=False, conditional=self.mode == "conditional", ode=ode, one=one)
                 if self.mode == "conditional":
                     X_backward = self.sampler.sample_separate(
-                        x1, model_2, model_3, self.noise, self.interpolate, times, all_t, backward=True, conditional=True)
+                        x1, model_2, model_3, self.noise, self.interpolate, times, all_t, backward=True, conditional=True, ode=ode, one=one)
                 else:
                     X_backward = self.sampler.sample_separate(
-                        x1, model_0, model_1, self.noise, self.interpolate, times, all_t, backward=True, conditional=False)
+                        x1, model_0, model_1, self.noise, self.interpolate, times, all_t, backward=True, conditional=False, ode=ode, one=one)
             else:
                 raise ValueError()
 
@@ -648,7 +645,7 @@ class HilbertStochasticInterpolant:
 
         return res_forward, res_backward, l2_err_forward, l2_err_backward, mse_err_forward, mse_err_backward, s_per_sample
 
-    def test_one(self, state_dict: Mapping[str, Any], n_samples: int, n_id: int, n_batch_size: int, all_t: bool, phase: Literal["valid", "test"]):
+    def test_one(self, state_dict: Mapping[str, Any], n_samples: int, n_id: int, n_batch_size: int, all_t: bool, phase: Literal["valid", "test"], ode=False, one=False):
         """
         Tests the model by generating a single specified example multiple times.
 
@@ -754,13 +751,13 @@ class HilbertStochasticInterpolant:
                         x1, model_1, self.noise, self.interpolate, times, all_t)
                 elif self.mode == "separate" or self.mode == "conditional":
                     X_forward = self.sampler.sample_separate(
-                        x0, model_0, model_1, self.noise, self.interpolate, times, all_t, backward=False, conditional=self.mode == "conditional")
+                        x0, model_0, model_1, self.noise, self.interpolate, times, all_t, backward=False, conditional=self.mode == "conditional", ode=ode, one=one)
                     if self.mode == "conditional":
                         X_backward = self.sampler.sample_separate(
-                            x1, model_2, model_3, self.noise, self.interpolate, times, all_t, backward=True, conditional=True)
+                            x1, model_2, model_3, self.noise, self.interpolate, times, all_t, backward=True, conditional=True, ode=ode, one=one)
                     else:
                         X_backward = self.sampler.sample_separate(
-                            x1, model_0, model_1, self.noise, self.interpolate, times, all_t, backward=True, conditional=False)
+                            x1, model_0, model_1, self.noise, self.interpolate, times, all_t, backward=True, conditional=False, ode=ode, one=one)
                 else:
                     raise ValueError()
 
