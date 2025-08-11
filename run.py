@@ -41,7 +41,10 @@ def main():
 
         state_dict = torch.load(args.pth)
         res_forward, res_backward, err_forward, err_backward, mse_forward, mse_backward, s_per_sample = context.test(
-            state_dict, args.max_n_samples, args.n_batch_size, args.all_t, phase="test", ode=args.ode, one=args.one)
+            state_dict, args.max_n_samples, args.n_batch_size, args.all_t, phase="test", ode=args.ode, one=args.one, resolutions={
+                "target": args.target_resolution,
+                "model": args.model_resolution,
+            } if args.target_resolution is not None else None)
         res_forward = res_forward.numpy()
         res_backward = res_backward.numpy()
         print(

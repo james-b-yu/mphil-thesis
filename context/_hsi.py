@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Any, Literal, Mapping
+from typing import Any, Literal, Mapping, TypedDict
 import torch
 from tqdm import tqdm
 
@@ -21,7 +21,12 @@ from wandb import init as wandb_init
 import math
 
 
-def get_model(config: Config, is_forward: bool):
+class TargetResolutionOverride(TypedDict):
+    target: int
+    model: int
+
+
+def get_model(config: Config, is_forward: bool, model_img_resolution: int | None = None):
     if config["model"] == "fno":
         return FNO(config, is_forward)
     elif config["model"] == "uno_2d":
@@ -38,7 +43,7 @@ def get_model(config: Config, is_forward: bool):
             n_extra_in_channels = config["source_channels"] if is_forward else config["target_channels"]
 
         return UNO2d(
-            img_resolution=config["resolution"],
+            img_resolution=config["resolution"] if model_img_resolution is None else model_img_resolution,
             attn_resolutions=config["uno_2d"]["attn_resolutions"],
             channel_mult=config["uno_2d"]["cres"],
             channel_mult_emb=4,
@@ -133,16 +138,24 @@ class HilbertStochasticInterpolant:
                 return (step / n_warmup_steps)
 
         # forward if direct, EIt if separate
-        model_0 = get_model(self.config, is_forward=True)
+        model_0 = get_model(self.config, is_forward=True,
+                            model_img_resolution=None if self.args.target_resolution is None else self.args.model_resolution)
         # backward if direct, Ez if separate
-        model_1 = get_model(self.config, is_forward=True)
-        ema_model_0 = get_model(self.config, is_forward=True)
-        ema_model_1 = get_model(self.config, is_forward=True)
+        model_1 = get_model(self.config, is_forward=True,
+                            model_img_resolution=None if self.args.target_resolution is None else self.args.model_resolution)
+        ema_model_0 = get_model(self.config, is_forward=True,
+                                model_img_resolution=None if self.args.target_resolution is None else self.args.model_resolution)
+        ema_model_1 = get_model(self.config, is_forward=True,
+                                model_img_resolution=None if self.args.target_resolution is None else self.args.model_resolution)
         if self.config["mode"] == "conditional":
-            model_2 = get_model(self.config, is_forward=False)
-            model_3 = get_model(self.config, is_forward=False)
-            ema_model_2 = get_model(self.config, is_forward=False)
-            ema_model_3 = get_model(self.config, is_forward=False)
+            model_2 = get_model(self.config, is_forward=False,
+                                model_img_resolution=None if self.args.target_resolution is None else self.args.model_resolution)
+            model_3 = get_model(self.config, is_forward=False,
+                                model_img_resolution=None if self.args.target_resolution is None else self.args.model_resolution)
+            ema_model_2 = get_model(self.config, is_forward=False,
+                                    model_img_resolution=None if self.args.target_resolution is None else self.args.model_resolution)
+            ema_model_3 = get_model(self.config, is_forward=False,
+                                    model_img_resolution=None if self.args.target_resolution is None else self.args.model_resolution)
 
         if self.args.resume is not None:
             model_path = Path(self.args.resume).joinpath("./model.pth")
@@ -463,10 +476,11 @@ class HilbertStochasticInterpolant:
                 torch.save(
                     ema_state_dict, f"{self.args.save_dir}/ema_epoch_{epoch}.pth")
 
-                _, _, err_forward, err_backward, mse_forward, mse_backward, _ = self.test(
-                    state_dict, max_n_samples=256, n_batch_size=self.config["training"]["n_batch"], all_t=False, phase="valid", shuffle=True)
-                _, _, ema_err_forward, ema_err_backward, ema_mse_forward, ema_mse_backward, _ = self.test(
-                    ema_state_dict, max_n_samples=256, n_batch_size=self.config["training"]["n_batch"], all_t=False, phase="valid", shuffle=True)
+                if self.args.target_resolution is None:
+                    _, _, err_forward, err_backward, mse_forward, mse_backward, _ = self.test(
+                        state_dict, max_n_samples=256, n_batch_size=self.config["training"]["n_batch"], all_t=False, phase="valid", shuffle=True)
+                    _, _, ema_err_forward, ema_err_backward, ema_mse_forward, ema_mse_backward, _ = self.test(
+                        ema_state_dict, max_n_samples=256, n_batch_size=self.config["training"]["n_batch"], all_t=False, phase="valid", shuffle=True)
 
                 wandb_run.log({
                     "step": step,
@@ -481,43 +495,49 @@ class HilbertStochasticInterpolant:
                     "ema_backward_valid_rel_l2_mse": ema_mse_backward,
                 })
 
-    def test(self, state_dict: Mapping[str, Any], max_n_samples: int | None, n_batch_size: int, all_t: bool, phase: Literal["valid", "test"], shuffle=False, ode=False, one=False):
+    def test(self, state_dict: Mapping[str, Any], max_n_samples: int | None, n_batch_size: int, all_t: bool, phase: Literal["valid", "test"], shuffle=False, ode=False, one=False, resolutions: TargetResolutionOverride | None = None):
         start_timestamp = time()
 
         self.logger.info("testing")
 
         if self.mode != "conditional":
-            model_0 = get_model(self.config, is_forward=True)
+            model_0 = get_model(self.config, is_forward=True,
+                                model_img_resolution=None if resolutions is None else resolutions["model"])
             model_0.load_state_dict(
                 state_dict["forward" if self.mode == "direct" else "EIt"])
             model_0 = model_0.to(device=self.device)
             model_0.eval()
 
-            model_1 = get_model(self.config, is_forward=True)
+            model_1 = get_model(self.config, is_forward=True,
+                                model_img_resolution=None if resolutions is None else resolutions["model"])
             model_1.load_state_dict(
                 state_dict["backward" if self.mode == "direct" else "Ez"])
             model_1 = model_1.to(device=self.device)
             model_1.eval()
         else:
-            model_0 = get_model(self.config, is_forward=True)
+            model_0 = get_model(self.config, is_forward=True,
+                                model_img_resolution=None if resolutions is None else resolutions["model"])
             model_0.load_state_dict(
                 state_dict["EIt_forward"])
             model_0 = model_0.to(device=self.device)
             model_0.eval()
 
-            model_1 = get_model(self.config, is_forward=True)
+            model_1 = get_model(self.config, is_forward=True,
+                                model_img_resolution=None if resolutions is None else resolutions["model"])
             model_1.load_state_dict(
                 state_dict["Ez_forward"])
             model_1 = model_1.to(device=self.device)
             model_1.eval()
 
-            model_2 = get_model(self.config, is_forward=False)
+            model_2 = get_model(self.config, is_forward=False,
+                                model_img_resolution=None if resolutions is None else resolutions["model"])
             model_2.load_state_dict(
                 state_dict["EIt_backward"])
             model_2 = model_2.to(device=self.device)
             model_2.eval()
 
-            model_3 = get_model(self.config, is_forward=False)
+            model_3 = get_model(self.config, is_forward=False,
+                                model_img_resolution=None if resolutions is None else resolutions["model"])
             model_3.load_state_dict(
                 state_dict["Ez_backward"])
             model_3 = model_3.to(device=self.device)

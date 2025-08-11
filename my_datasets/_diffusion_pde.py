@@ -275,7 +275,7 @@ class DiffusionPDEDataset(TorchDataset):
         assert raw_resolution == self._hf_dataset_dict[phase][0][
             self._source_name].shape[-1] == self._hf_dataset_dict[phase][0][self._target_name].shape[-2] == self._hf_dataset_dict[phase][0][self._target_name].shape[-1]
 
-        assert target_resolution < raw_resolution and raw_resolution % target_resolution == 0
+        assert target_resolution <= raw_resolution and raw_resolution % target_resolution == 0
 
         self._downsample_factor = raw_resolution // target_resolution
 

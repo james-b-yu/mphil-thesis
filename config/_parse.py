@@ -35,6 +35,8 @@ def parse():
     inference_parser.add_argument(
         "--ode", required=False, action="store_true")
     inference_parser.add_argument("--one", required=False, action="store_true")
+    inference_parser.add_argument("--target-resolution", required=False, type=int, default=None,
+                                  help="if specified, perform inference at different resolution to model's native resolution")
 
     # define the main parser
     parser = argparse.ArgumentParser(
@@ -61,6 +63,8 @@ def parse():
                               default=None, help="if specified, resume at given .pth file")
     train_parser.add_argument("--n-dataworkers", type=int, default=6)
     train_parser.add_argument("--n-prefetch-factor", type=int, default=None)
+    train_parser.add_argument("--target-resolution", required=False, type=int, default=None,
+                              help="if specified, perform inference at different resolution to model's native resolution")
 
     test_parser = subparsers.add_parser(name="test", help="evaluate model using test dataset", parents=[
                                         pipeline_parser, inference_parser])
@@ -137,5 +141,12 @@ def parse():
             config["sampling"]["method"] = args.method
             print(
                 f"Overriding sampling method to {config["sampling"]["method"]}")
+
+        if hasattr(args, "target_resolution") and args.target_resolution is not None:
+            print(
+                f"Overriding target resolution to {args.target_resolution}. Model's native resolution is {config["resolution"]}")
+            args.model_resolution = config["resolution"]
+            # hacky switch. need to be careful! use args.model_resolution for img_resolution when instantiating UNO
+            config["resolution"] = args.target_resolution
 
     return args, config
