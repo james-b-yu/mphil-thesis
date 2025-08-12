@@ -482,18 +482,18 @@ class HilbertStochasticInterpolant:
                     _, _, ema_err_forward, ema_err_backward, ema_mse_forward, ema_mse_backward, _ = self.test(
                         ema_state_dict, max_n_samples=256, n_batch_size=self.config["training"]["n_batch"], all_t=False, phase="valid", shuffle=True)
 
-                wandb_run.log({
-                    "step": step,
-                    "epoch": epoch,
-                    "forward_valid_rel_l2_err": err_forward,
-                    "backward_valid_rel_l2_err": err_backward,
-                    "forward_valid_rel_l2_mse": mse_forward,
-                    "backward_valid_rel_l2_mse": mse_backward,
-                    "ema_forward_valid_rel_l2_err": ema_err_forward,
-                    "ema_backward_valid_rel_l2_err": ema_err_backward,
-                    "ema_forward_valid_rel_l2_mse": ema_mse_forward,
-                    "ema_backward_valid_rel_l2_mse": ema_mse_backward,
-                })
+                    wandb_run.log({
+                        "step": step,
+                        "epoch": epoch,
+                        "forward_valid_rel_l2_err": err_forward,
+                        "backward_valid_rel_l2_err": err_backward,
+                        "forward_valid_rel_l2_mse": mse_forward,
+                        "backward_valid_rel_l2_mse": mse_backward,
+                        "ema_forward_valid_rel_l2_err": ema_err_forward,
+                        "ema_backward_valid_rel_l2_err": ema_err_backward,
+                        "ema_forward_valid_rel_l2_mse": ema_mse_forward,
+                        "ema_backward_valid_rel_l2_mse": ema_mse_backward,
+                    })
 
     def test(self, state_dict: Mapping[str, Any], max_n_samples: int | None, n_batch_size: int, all_t: bool, phase: Literal["valid", "test"], shuffle=False, ode=False, one=False, resolutions: TargetResolutionOverride | None = None):
         start_timestamp = time()
